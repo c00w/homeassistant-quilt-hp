@@ -1,0 +1,11 @@
+{
+  "domain": "quilt_hp",
+  "name": "Quilt Heat Pump",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/eman/homeassistant-quilt-hp",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/eman/homeassistant-quilt-hp/issues",
+  "requirements": ["quilt-hp-python>=0.1.0"],
+  "version": "0.1.0"
+}

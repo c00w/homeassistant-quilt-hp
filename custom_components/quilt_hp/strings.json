@@ -1,0 +1,33 @@
+{
+  "title": "Quilt Heat Pump",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Quilt",
+        "description": "Enter the email address associated with your Quilt account. A one-time passcode will be sent to that address.",
+        "data": {
+          "email": "Email address"
+        }
+      },
+      "otp": {
+        "title": "Enter passcode",
+        "description": "Enter the one-time passcode sent to {email}.",
+        "data": {
+          "otp": "One-time passcode"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Quilt",
+        "description": "Your Quilt session for {email} has expired. Click submit to receive a new passcode."
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the Quilt cloud. Check your internet connection and try again.",
+      "invalid_auth": "Invalid passcode. Please check the code and try again.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This Quilt account is already configured."
+    }
+  }
+}
