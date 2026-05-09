@@ -96,8 +96,8 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         self._stream.on_space_update(self._on_space_update)
         self._stream.on_indoor_unit_update(self._on_idu_update)
         self._stream.on_outdoor_unit_update(self._on_odu_update)
-        self._stream.on_disconnected(
-            lambda: _LOGGER.warning("Quilt stream disconnected; will reconnect")
+        self._stream.on_error(
+            lambda err: _LOGGER.warning("Quilt stream error; will reconnect: %s", err)
         )
         await self._stream.start()
 
