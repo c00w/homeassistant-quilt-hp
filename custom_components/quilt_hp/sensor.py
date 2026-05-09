@@ -1,11 +1,12 @@
 """Sensor platform for Quilt Heat Pump.
 
 Provides sensor entities for:
-- QSM (IndoorUnit): space temperature (space-calibrated), unit temp, humidity,
-                    fan RPM, inlet/outlet temp, presence level,
-                    COP, HVAC capacity (W), HVAC power (W)
+- QSM/IDU: space temperature (space-calibrated), unit temp, humidity,
+           fan RPM, inlet/outlet temp, presence level,
+           COP, HVAC capacity (W), HVAC power (W),
+           calibrated ambient temp, radar signals, illuminance
 - OutdoorUnit: ambient temp, compressor frequency, pressures
-- Controller (Dial): ambient temperature
+- Controller (Dial): ambient temperature, WiFi signal
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    LIGHT_LUX,
     PERCENTAGE,
     REVOLUTIONS_PER_MINUTE,
     UnitOfFrequency,
@@ -33,10 +35,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from quilt_hp.models.controller import Controller
 from quilt_hp.models.indoor_unit import IndoorUnit
 from quilt_hp.models.outdoor_unit import OutdoorUnit
+from quilt_hp.models.qsm import QuiltSmartModule
 from quilt_hp.models.space import Space
-from quilt_hp.models.controller import Controller
 
 from .const import DOMAIN
 from .coordinator import QuiltCoordinator
@@ -154,6 +157,50 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         ),
         entity_registry_enabled_default=False,
     ),
+    IDUSensorDescription(
+        key="calculated_ambient_temperature",
+        name="Calibrated Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda idu: idu.state.calculated_ambient_temperature_c or None,
+        entity_registry_enabled_default=False,
+    ),
+)
+
+
+# ── QSM (radar / ALS) sensors — on IDU device ────────────────────────────────
+
+
+@dataclass(frozen=True, kw_only=True)
+class QSMSensorDescription(SensorEntityDescription):
+    value_fn: Callable[[QuiltSmartModule], Any] = lambda _: None
+
+
+QSM_SENSOR_DESCRIPTIONS: tuple[QSMSensorDescription, ...] = (
+    QSMSensorDescription(
+        key="phase_detected_raw",
+        name="Motion Signal",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda qsm: qsm.sensors.phase_detected_raw if qsm.sensors else None,
+        entity_registry_enabled_default=False,
+    ),
+    QSMSensorDescription(
+        key="target_detected_raw",
+        name="Presence Signal",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda qsm: qsm.sensors.target_detected_raw if qsm.sensors else None,
+        entity_registry_enabled_default=False,
+    ),
+    QSMSensorDescription(
+        key="als_illuminance",
+        name="Illuminance",
+        device_class=SensorDeviceClass.ILLUMINANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=LIGHT_LUX,
+        value_fn=lambda qsm: qsm.sensors.als_illuminance_raw if qsm.sensors else None,
+        entity_registry_enabled_default=False,
+    ),
 )
 
 
@@ -232,6 +279,15 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda ctrl: ctrl.ambient_temperature_c,
     ),
+    ControllerSensorDescription(
+        key="wifi_signal",
+        name="WiFi Signal",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="dBm",
+        value_fn=lambda ctrl: ctrl.wifi_signal_dbm,
+        entity_registry_enabled_default=False,
+    ),
 )
 
 
@@ -249,7 +305,6 @@ async def async_setup_entry(
     entities: list[SensorEntity] = []
 
     # Index the first IDU per space so space-level sensors have a device to live on.
-    # A space is always non-functional without at least one IDU, so this is safe.
     first_idu_for_space: dict[str, str] = {}
     for idu in snapshot.indoor_units:
         if idu.space_id and idu.space_id not in first_idu_for_space:
@@ -265,10 +320,13 @@ async def async_setup_entry(
         for space_desc in SPACE_SENSOR_DESCRIPTIONS:
             entities.append(QuiltSpaceSensor(coordinator, space.id, idu_id, space_desc))
 
-    # QSM (IndoorUnit) sensors
+    # QSM/IDU sensors
     for idu in snapshot.indoor_units:
         for idu_desc in IDU_SENSOR_DESCRIPTIONS:
             entities.append(QuiltIDUSensor(coordinator, idu.id, idu_desc))
+        if idu.qsm_id:
+            for qsm_desc in QSM_SENSOR_DESCRIPTIONS:
+                entities.append(QuiltQSMSensor(coordinator, idu.id, qsm_desc))
 
     # OutdoorUnit sensors
     for odu in snapshot.outdoor_units:
@@ -385,9 +443,7 @@ class QuiltODUSensor(QuiltEntity, SensorEntity):
     @property
     @override
     def device_info(self) -> DeviceInfo:
-        odu = self._odu
-        space = self.coordinator.spaces_by_id.get(odu.space_id) if odu.space_id else None
-        return odu_device_info(odu, space)
+        return odu_device_info(self._odu)
 
     @property
     @override
@@ -420,8 +476,8 @@ class QuiltControllerSensor(QuiltEntity, SensorEntity):
     @override
     def device_info(self) -> DeviceInfo:
         ctrl = self._ctrl
-        space = self.coordinator.spaces_by_id.get(ctrl.space_id) if ctrl.space_id else None
-        return controller_device_info(ctrl, space)
+        idu = self.coordinator.idu_by_space_id.get(ctrl.space_id) if ctrl.space_id else None
+        return controller_device_info(ctrl, idu)
 
     @property
     @override
@@ -432,3 +488,48 @@ class QuiltControllerSensor(QuiltEntity, SensorEntity):
     @override
     def native_value(self) -> Any:
         return self.entity_description.value_fn(self._ctrl)
+
+
+class QuiltQSMSensor(QuiltEntity, SensorEntity):
+    """Sensor entity for QSM radar/ALS data, presented on the IDU device."""
+
+    entity_description: QSMSensorDescription
+
+    def __init__(
+        self,
+        coordinator: QuiltCoordinator,
+        idu_id: str,
+        description: QSMSensorDescription,
+    ) -> None:
+        """Initialize the QSM sensor entity."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._idu_id: str = idu_id
+        self._attr_unique_id: str = f"quilt_qsm_{idu_id}_{description.key}"
+
+    @property
+    def _idu(self) -> IndoorUnit:
+        return self.coordinator.idu_by_id[self._idu_id]
+
+    @property
+    def _qsm(self) -> QuiltSmartModule | None:
+        qsm_id = self._idu.qsm_id
+        return self.coordinator.qsm_by_id.get(qsm_id) if qsm_id else None
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        idu = self._idu
+        space = self.coordinator.spaces_by_id.get(idu.space_id) if idu.space_id else None
+        return idu_device_info(idu, space)
+
+    @property
+    @override
+    def available(self) -> bool:
+        return super().available and self._idu.is_online and self._qsm is not None
+
+    @property
+    @override
+    def native_value(self) -> Any:
+        qsm = self._qsm
+        return self.entity_description.value_fn(qsm) if qsm else None

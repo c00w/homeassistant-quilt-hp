@@ -6,7 +6,7 @@ CONF_EMAIL = "email"
 CONF_SYSTEM_ID = "system_id"
 CONF_HOME_NAME = "home_name"
 
-PLATFORMS = ["climate", "fan", "light", "select", "sensor"]
+PLATFORMS = ["binary_sensor", "climate", "fan", "light", "select", "sensor"]
 
 # DataUpdateCoordinator polling fallback interval (seconds)
 COORDINATOR_UPDATE_INTERVAL_MINUTES = 5
