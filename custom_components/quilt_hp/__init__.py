@@ -10,7 +10,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import CONF_EMAIL, DOMAIN, INITIAL_FETCH_TIMEOUT_S, PLATFORMS
+from .const import CONF_EMAIL, CONF_SYSTEM_ID, DOMAIN, INITIAL_FETCH_TIMEOUT_S, PLATFORMS
 from .coordinator import QuiltCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -19,7 +19,8 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Quilt Heat Pump from a config entry."""
     email: str = entry.data[CONF_EMAIL]
-    coordinator = QuiltCoordinator(hass, email)
+    system_id: str | None = entry.data.get(CONF_SYSTEM_ID)
+    coordinator = QuiltCoordinator(hass, email, system_id=system_id)
 
     try:
         async with asyncio.timeout(INITIAL_FETCH_TIMEOUT_S):

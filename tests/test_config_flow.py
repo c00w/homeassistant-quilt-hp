@@ -23,6 +23,9 @@ def mock_quilt_client():
         client.__aenter__ = AsyncMock(return_value=client)
         client.__aexit__ = AsyncMock(return_value=False)
         client.login = AsyncMock(side_effect=_AwaitingOTP)
+        client.list_systems = AsyncMock(
+            return_value=[MagicMock(id="sys-001", name="My Home")]
+        )
         mock_cls.return_value = client
         yield client
 
@@ -53,9 +56,12 @@ async def test_user_step_proceeds_to_otp(
 async def test_otp_step_creates_entry(
     hass: HomeAssistant, mock_quilt_client
 ) -> None:
-    """Valid OTP should create the config entry."""
+    """Valid OTP should create the config entry (single home path)."""
     mock_quilt_client.login = AsyncMock(
         side_effect=[_AwaitingOTP, None]  # first call raises, second succeeds
+    )
+    mock_quilt_client.list_systems = AsyncMock(
+        return_value=[MagicMock(id="sys-001", name="My Home")]
     )
 
     result = await hass.config_entries.flow.async_init(
@@ -70,6 +76,63 @@ async def test_otp_step_creates_entry(
     )
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_EMAIL] == "user@example.com"
+    assert result["data"]["system_id"] == "sys-001"
+
+
+async def test_multi_home_shows_selector(
+    hass: HomeAssistant, mock_quilt_client
+) -> None:
+    """When multiple homes exist, a home selection step should be shown."""
+    mock_quilt_client.login = AsyncMock(side_effect=[_AwaitingOTP, None])
+    mock_quilt_client.list_systems = AsyncMock(
+        return_value=[
+            MagicMock(id="sys-001", name="Primary Home"),
+            MagicMock(id="sys-002", name="Vacation Home"),
+        ]
+    )
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_EMAIL: "user@example.com"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"otp": "123456"}
+    )
+    # Should land on the home selection step
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "home"
+
+
+async def test_multi_home_creates_entry_for_chosen_home(
+    hass: HomeAssistant, mock_quilt_client
+) -> None:
+    """Selecting a home should create an entry with the correct system_id."""
+    mock_quilt_client.login = AsyncMock(side_effect=[_AwaitingOTP, None])
+    mock_quilt_client.list_systems = AsyncMock(
+        return_value=[
+            MagicMock(id="sys-001", name="Primary Home"),
+            MagicMock(id="sys-002", name="Vacation Home"),
+        ]
+    )
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_EMAIL: "user@example.com"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"otp": "123456"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"home_name": "Vacation Home"}
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"]["system_id"] == "sys-002"
+    assert result["data"]["home_name"] == "Vacation Home"
+    assert result["title"] == "Vacation Home"
 
 
 async def test_otp_invalid_auth_shows_error(

@@ -16,6 +16,13 @@
           "otp": "One-time passcode"
         }
       },
+      "home": {
+        "title": "Select home",
+        "description": "Your account has {count} homes. Select the one you want to integrate.",
+        "data": {
+          "home_name": "Home"
+        }
+      },
       "reauth_confirm": {
         "title": "Re-authenticate Quilt",
         "description": "Your Quilt session for {email} has expired. Click submit to receive a new passcode."
@@ -27,7 +34,7 @@
       "unknown": "An unexpected error occurred."
     },
     "abort": {
-      "already_configured": "This Quilt account is already configured."
+      "already_configured": "This Quilt home is already configured."
     }
   }
 }

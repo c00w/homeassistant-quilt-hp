@@ -3,6 +3,8 @@
 DOMAIN = "quilt_hp"
 
 CONF_EMAIL = "email"
+CONF_SYSTEM_ID = "system_id"
+CONF_HOME_NAME = "home_name"
 
 PLATFORMS = ["climate", "fan", "light", "select", "sensor"]
 

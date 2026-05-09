@@ -28,7 +28,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
     coordinator's data. A periodic poll acts as a fallback only.
     """
 
-    def __init__(self, hass: HomeAssistant, email: str) -> None:
+    def __init__(self, hass: HomeAssistant, email: str, system_id: str | None = None) -> None:
         super().__init__(
             hass,
             _LOGGER,
@@ -37,6 +37,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         )
         token_store = HATokenStore(hass)
         self._client = QuiltClient(email, token_store=token_store)
+        self._system_id = system_id  # None → library picks the default (first) system
         self._stream = None
 
     # ------------------------------------------------------------------
@@ -53,7 +54,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         await self._client.__aenter__()
         await self._client.login()
 
-        snapshot = await self._client.get_snapshot()
+        snapshot = await self._client.get_snapshot(system_id=self._system_id)
         self.async_set_updated_data(snapshot)
 
         await self._start_stream(snapshot)
@@ -109,6 +110,6 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
     async def _async_update_data(self) -> SystemSnapshot:
         try:
             self._client.invalidate_snapshot()
-            return await self._client.get_snapshot()
+            return await self._client.get_snapshot(system_id=self._system_id)
         except Exception as err:
             raise UpdateFailed(f"Error fetching Quilt snapshot: {err}") from err
