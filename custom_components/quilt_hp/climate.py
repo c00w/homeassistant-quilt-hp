@@ -23,7 +23,7 @@ from quilt_hp.models.space import Space
 
 from .const import DOMAIN
 from .coordinator import QuiltCoordinator
-from .entity import QuiltEntity, space_device_info
+from .entity import QuiltEntity, idu_device_info
 
 # ── Mode maps ─────────────────────────────────────────────────────────────────
 
@@ -68,10 +68,15 @@ async def async_setup_entry(
     coordinator: QuiltCoordinator = hass.data[DOMAIN][entry.entry_id]
     snapshot = coordinator.data
 
+    first_idu_for_space: dict[str, str] = {}
+    for idu in snapshot.indoor_units:
+        if idu.space_id and idu.space_id not in first_idu_for_space:
+            first_idu_for_space[idu.space_id] = idu.id
+
     entities = [
-        QuiltClimateEntity(coordinator, space.id)
+        QuiltClimateEntity(coordinator, space.id, first_idu_for_space[space.id])
         for space in snapshot.spaces
-        if space.is_room
+        if space.is_room and space.id in first_idu_for_space
     ]
     async_add_entities(entities)
 
@@ -86,10 +91,11 @@ class QuiltClimateEntity(QuiltEntity, ClimateEntity):
     )
     _attr_translation_key: str = "climate"
 
-    def __init__(self, coordinator: QuiltCoordinator, space_id: str) -> None:
+    def __init__(self, coordinator: QuiltCoordinator, space_id: str, idu_id: str) -> None:
         """Initialize the climate entity."""
         super().__init__(coordinator)
         self._space_id: str = space_id
+        self._idu_id: str = idu_id
         self._attr_unique_id: str = f"quilt_space_climate_{space_id}"
         self._attr_name: str | None = None  # use device name as entity name
         self._attr_hvac_modes: list[HVACMode] = list(_HA_TO_Q.keys())
@@ -101,7 +107,9 @@ class QuiltClimateEntity(QuiltEntity, ClimateEntity):
     @property
     @override
     def device_info(self) -> DeviceInfo:
-        return space_device_info(self._space)
+        idu = self.coordinator.idu_by_id[self._idu_id]
+        space = self._space
+        return idu_device_info(idu, space)
 
     @property
     @override

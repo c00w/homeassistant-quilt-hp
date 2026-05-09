@@ -1,10 +1,11 @@
 """Sensor platform for Quilt Heat Pump.
 
 Provides sensor entities for:
-- Space: ambient temperature
-- IndoorUnit: temp, humidity, fan RPM, inlet/outlet temp, presence level,
-              COP, HVAC capacity (W), HVAC power (W)
+- QSM (IndoorUnit): space temperature (space-calibrated), unit temp, humidity,
+                    fan RPM, inlet/outlet temp, presence level,
+                    COP, HVAC capacity (W), HVAC power (W)
 - OutdoorUnit: ambient temp, compressor frequency, pressures
+- Controller (Dial): ambient temperature
 """
 
 from __future__ import annotations
@@ -39,9 +40,9 @@ from quilt_hp.models.controller import Controller
 
 from .const import DOMAIN
 from .coordinator import QuiltCoordinator
-from .entity import QuiltEntity, controller_device_info, idu_device_info, odu_device_info, space_device_info
+from .entity import QuiltEntity, controller_device_info, idu_device_info, odu_device_info
 
-# ── Space sensors ─────────────────────────────────────────────────────────────
+# ── Space temperature sensor (on QSM device) ──────────────────────────────────
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -51,8 +52,8 @@ class SpaceSensorDescription(SensorEntityDescription):
 
 SPACE_SENSOR_DESCRIPTIONS: tuple[SpaceSensorDescription, ...] = (
     SpaceSensorDescription(
-        key="ambient_temperature",
-        name="Temperature",
+        key="space_temperature",
+        name="Space Temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -247,14 +248,24 @@ async def async_setup_entry(
     snapshot = coordinator.data
     entities: list[SensorEntity] = []
 
-    # Space sensors
+    # Index the first IDU per space so space-level sensors have a device to live on.
+    # A space is always non-functional without at least one IDU, so this is safe.
+    first_idu_for_space: dict[str, str] = {}
+    for idu in snapshot.indoor_units:
+        if idu.space_id and idu.space_id not in first_idu_for_space:
+            first_idu_for_space[idu.space_id] = idu.id
+
+    # Space temperature sensors — attached to the first QSM in each space
     for space in snapshot.spaces:
         if not space.is_room:
             continue
+        idu_id = first_idu_for_space.get(space.id)
+        if idu_id is None:
+            continue
         for space_desc in SPACE_SENSOR_DESCRIPTIONS:
-            entities.append(QuiltSpaceSensor(coordinator, space.id, space_desc))
+            entities.append(QuiltSpaceSensor(coordinator, space.id, idu_id, space_desc))
 
-    # IndoorUnit sensors
+    # QSM (IndoorUnit) sensors
     for idu in snapshot.indoor_units:
         for idu_desc in IDU_SENSOR_DESCRIPTIONS:
             entities.append(QuiltIDUSensor(coordinator, idu.id, idu_desc))
@@ -276,7 +287,7 @@ async def async_setup_entry(
 
 
 class QuiltSpaceSensor(QuiltEntity, SensorEntity):
-    """Sensor entity for a Quilt space."""
+    """Space temperature sensor, presented on the first QSM in the space."""
 
     entity_description: SpaceSensorDescription
 
@@ -284,12 +295,14 @@ class QuiltSpaceSensor(QuiltEntity, SensorEntity):
         self,
         coordinator: QuiltCoordinator,
         space_id: str,
+        idu_id: str,
         description: SpaceSensorDescription,
     ) -> None:
         """Initialize the space sensor entity."""
         super().__init__(coordinator)
         self.entity_description = description
         self._space_id: str = space_id
+        self._idu_id: str = idu_id
         self._attr_unique_id: str = f"quilt_space_{space_id}_{description.key}"
 
     @property
@@ -299,7 +312,9 @@ class QuiltSpaceSensor(QuiltEntity, SensorEntity):
     @property
     @override
     def device_info(self) -> DeviceInfo:
-        return space_device_info(self._space)
+        idu = self.coordinator.idu_by_id[self._idu_id]
+        space = self._space
+        return idu_device_info(idu, space)
 
     @property
     @override
@@ -332,7 +347,7 @@ class QuiltIDUSensor(QuiltEntity, SensorEntity):
     @override
     def device_info(self) -> DeviceInfo:
         idu = self._idu
-        space = self.coordinator.spaces_by_id[idu.space_id]
+        space = self.coordinator.spaces_by_id.get(idu.space_id) if idu.space_id else None
         return idu_device_info(idu, space)
 
     @property
@@ -370,7 +385,9 @@ class QuiltODUSensor(QuiltEntity, SensorEntity):
     @property
     @override
     def device_info(self) -> DeviceInfo:
-        return odu_device_info(self._odu)
+        odu = self._odu
+        space = self.coordinator.spaces_by_id.get(odu.space_id) if odu.space_id else None
+        return odu_device_info(odu, space)
 
     @property
     @override
@@ -402,7 +419,9 @@ class QuiltControllerSensor(QuiltEntity, SensorEntity):
     @property
     @override
     def device_info(self) -> DeviceInfo:
-        return controller_device_info(self._ctrl)
+        ctrl = self._ctrl
+        space = self.coordinator.spaces_by_id.get(ctrl.space_id) if ctrl.space_id else None
+        return controller_device_info(ctrl, space)
 
     @property
     @override
