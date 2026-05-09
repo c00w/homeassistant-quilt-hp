@@ -10,6 +10,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from quilt_hp.models.indoor_unit import IndoorUnit
 from quilt_hp.models.outdoor_unit import OutdoorUnit
 from quilt_hp.models.space import Space
+from quilt_hp.models.controller import Controller
 
 from .const import DOMAIN
 from .coordinator import QuiltCoordinator
@@ -61,4 +62,17 @@ def odu_device_info(odu: OutdoorUnit) -> DeviceInfo:
         model=odu.model_sku or "Quilt Outdoor Unit",
         serial_number=odu.serial_number,
         sw_version=odu.firmware_version,
+    )
+
+
+def controller_device_info(ctrl: Controller) -> DeviceInfo:
+    """Build a ``DeviceInfo`` for a Quilt Controller (Dial)."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"c_{ctrl.id}")},
+        name=ctrl.name,
+        manufacturer=_MANUFACTURER,
+        model=ctrl.model_sku or "Quilt Dial",
+        serial_number=ctrl.serial_number,
+        sw_version=ctrl.firmware_version,
+        via_device=(DOMAIN, f"s_{ctrl.space_id}"),
     )

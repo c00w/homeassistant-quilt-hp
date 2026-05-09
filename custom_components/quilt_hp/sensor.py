@@ -35,10 +35,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from quilt_hp.models.indoor_unit import IndoorUnit
 from quilt_hp.models.outdoor_unit import OutdoorUnit
 from quilt_hp.models.space import Space
+from quilt_hp.models.controller import Controller
 
 from .const import DOMAIN
 from .coordinator import QuiltCoordinator
-from .entity import QuiltEntity, idu_device_info, odu_device_info, space_device_info
+from .entity import QuiltEntity, controller_device_info, idu_device_info, odu_device_info, space_device_info
 
 # ── Space sensors ─────────────────────────────────────────────────────────────
 
@@ -212,6 +213,27 @@ ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
 )
 
 
+# ── Controller (Dial) sensors ─────────────────────────────────────────────────
+
+
+@dataclass(frozen=True, kw_only=True)
+class ControllerSensorDescription(SensorEntityDescription):
+    value_fn: Callable[[Controller], Any] = lambda _: None
+    available_fn: Callable[[Controller], bool] = lambda ctrl: ctrl.is_online
+
+
+CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
+    ControllerSensorDescription(
+        key="ambient_temperature",
+        name="Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda ctrl: ctrl.ambient_temperature_c,
+    ),
+)
+
+
 # ── Platform setup ────────────────────────────────────────────────────────────
 
 
@@ -241,6 +263,11 @@ async def async_setup_entry(
     for odu in snapshot.outdoor_units:
         for odu_desc in ODU_SENSOR_DESCRIPTIONS:
             entities.append(QuiltODUSensor(coordinator, odu.id, odu_desc))
+
+    # Controller (Dial) sensors
+    for ctrl in snapshot.controllers:
+        for ctrl_desc in CONTROLLER_SENSOR_DESCRIPTIONS:
+            entities.append(QuiltControllerSensor(coordinator, ctrl.id, ctrl_desc))
 
     async_add_entities(entities)
 
@@ -349,3 +376,40 @@ class QuiltODUSensor(QuiltEntity, SensorEntity):
     @override
     def native_value(self) -> Any:
         return self.entity_description.value_fn(self._odu)
+
+
+class QuiltControllerSensor(QuiltEntity, SensorEntity):
+    """Sensor entity for a Quilt Controller (Dial)."""
+
+    entity_description: ControllerSensorDescription
+
+    def __init__(
+        self,
+        coordinator: QuiltCoordinator,
+        ctrl_id: str,
+        description: ControllerSensorDescription,
+    ) -> None:
+        """Initialize the controller sensor entity."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._ctrl_id: str = ctrl_id
+        self._attr_unique_id: str = f"quilt_ctrl_{ctrl_id}_{description.key}"
+
+    @property
+    def _ctrl(self) -> Controller:
+        return self.coordinator.ctrl_by_id[self._ctrl_id]
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        return controller_device_info(self._ctrl)
+
+    @property
+    @override
+    def available(self) -> bool:
+        return super().available and self.entity_description.available_fn(self._ctrl)
+
+    @property
+    @override
+    def native_value(self) -> Any:
+        return self.entity_description.value_fn(self._ctrl)

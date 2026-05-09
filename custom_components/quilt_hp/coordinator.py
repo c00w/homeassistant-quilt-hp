@@ -14,6 +14,7 @@ from quilt_hp import QuiltClient  # type: ignore[attr-defined]
 from quilt_hp.models.indoor_unit import IndoorUnit
 from quilt_hp.models.outdoor_unit import OutdoorUnit
 from quilt_hp.models.space import Space
+from quilt_hp.models.controller import Controller
 from quilt_hp.models.system import SystemSnapshot
 
 from .const import COORDINATOR_UPDATE_INTERVAL_MINUTES, DOMAIN
@@ -47,6 +48,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         self.spaces_by_id: dict[str, Space] = {}
         self.idu_by_id: dict[str, IndoorUnit] = {}
         self.odu_by_id: dict[str, OutdoorUnit] = {}
+        self.ctrl_by_id: dict[str, Controller] = {}
 
     @override
     def async_set_updated_data(self, data: SystemSnapshot) -> None:
@@ -54,6 +56,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         self.spaces_by_id = {s.id: s for s in data.spaces}
         self.idu_by_id = {u.id: u for u in data.indoor_units}
         self.odu_by_id = {u.id: u for u in data.outdoor_units}
+        self.ctrl_by_id = {c.id: c for c in data.controllers}
         super().async_set_updated_data(data)
 
     # ------------------------------------------------------------------
@@ -96,6 +99,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         self._stream.on_space_update(self._on_space_update)
         self._stream.on_indoor_unit_update(self._on_idu_update)
         self._stream.on_outdoor_unit_update(self._on_odu_update)
+        self._stream.on_controller_update(self._on_ctrl_update)
         self._stream.on_error(
             lambda err: _LOGGER.warning("Quilt stream error; will reconnect: %s", err)
         )
@@ -114,6 +118,11 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
     def _on_odu_update(self, odu: OutdoorUnit) -> None:
         if self.data:
             _ = self.data.apply_outdoor_unit(odu)
+            self.async_set_updated_data(self.data)
+
+    def _on_ctrl_update(self, ctrl: Controller) -> None:
+        if self.data:
+            _ = self.data.apply_controller(ctrl)
             self.async_set_updated_data(self.data)
 
     # ------------------------------------------------------------------
