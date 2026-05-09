@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from homeassistant.core import HomeAssistant
-
 from quilt_hp.models.enums import (
     FanSpeed,
     HVACMode,
@@ -28,8 +25,8 @@ from quilt_hp.models.indoor_unit import (
 from quilt_hp.models.outdoor_unit import OutdoorUnit, OutdoorUnitPerformanceData
 from quilt_hp.models.space import Space, SpaceControls, SpaceSettings, SpaceState
 
-
 # ── Model helpers ─────────────────────────────────────────────────────────────
+
 
 def make_space(
     space_id: str = "space-001",
@@ -174,13 +171,19 @@ def make_snapshot(
 
 # ── Coordinator / client mocks ────────────────────────────────────────────────
 
+
 def make_mock_coordinator(hass: HomeAssistant, snapshot=None) -> MagicMock:
     """Return a pre-configured mock coordinator."""
     from custom_components.quilt_hp.coordinator import QuiltCoordinator
 
     coordinator = MagicMock(spec=QuiltCoordinator)
     coordinator.hass = hass
-    coordinator.data = snapshot or make_snapshot()
+    data = snapshot or make_snapshot()
+    coordinator.data = data
+    coordinator.spaces_by_id = {s.id: s for s in data.spaces}
+    coordinator.idu_by_id = {u.id: u for u in data.indoor_units}
+    coordinator.odu_by_id = {u.id: u for u in data.outdoor_units}
+    coordinator.last_update_success = True
     coordinator.client = MagicMock()
     coordinator.client.set_space = AsyncMock()
     coordinator.client.set_indoor_unit = AsyncMock()

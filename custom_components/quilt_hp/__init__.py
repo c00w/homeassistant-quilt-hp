@@ -6,11 +6,16 @@ import asyncio
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import CONF_EMAIL, CONF_SYSTEM_ID, DOMAIN, INITIAL_FETCH_TIMEOUT_S, PLATFORMS
+from .const import (
+    CONF_EMAIL,
+    CONF_SYSTEM_ID,
+    DOMAIN,
+    INITIAL_FETCH_TIMEOUT_S,
+    PLATFORMS,
+)
 from .coordinator import QuiltCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,9 +30,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         async with asyncio.timeout(INITIAL_FETCH_TIMEOUT_S):
             await coordinator.async_setup()
-    except asyncio.TimeoutError as err:
+    except TimeoutError as err:
         raise ConfigEntryNotReady("Timed out fetching initial Quilt snapshot") from err
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         raise ConfigEntryNotReady(f"Quilt setup failed: {err}") from err
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator

@@ -3,8 +3,8 @@ services:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: homeassistant-quilt-hp
     restart: unless-stopped
-    privileged: true
-    network_mode: host
+    ports:
+      - "8124:8123"
     environment:
       - TZ=America/Los_Angeles
     volumes:

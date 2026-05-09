@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from homeassistant.core import HomeAssistant
+import pytest
 
 from custom_components.quilt_hp.coordinator import QuiltCoordinator
 
@@ -31,14 +31,16 @@ def mock_client(monkeypatch):
     stream.stop = AsyncMock()
     client.stream.return_value = stream
 
-    with patch("custom_components.quilt_hp.coordinator.QuiltClient", return_value=client):
-        with patch("custom_components.quilt_hp.coordinator.HATokenStore"):
-            yield client, stream
+    with (
+        patch(
+            "custom_components.quilt_hp.coordinator.QuiltClient", return_value=client
+        ),
+        patch("custom_components.quilt_hp.coordinator.HATokenStore"),
+    ):
+        yield client, stream
 
 
-async def test_async_setup_fetches_snapshot(
-    hass: HomeAssistant, mock_client
-) -> None:
+async def test_async_setup_fetches_snapshot(hass: HomeAssistant, mock_client) -> None:
     """async_setup should login, fetch snapshot, and start stream."""
     client, stream = mock_client
     coordinator = QuiltCoordinator(hass, "user@example.com")
@@ -50,9 +52,7 @@ async def test_async_setup_fetches_snapshot(
     assert coordinator.data is not None
 
 
-async def test_async_shutdown_stops_stream(
-    hass: HomeAssistant, mock_client
-) -> None:
+async def test_async_shutdown_stops_stream(hass: HomeAssistant, mock_client) -> None:
     """async_shutdown should stop the stream and close the client."""
     client, stream = mock_client
     coordinator = QuiltCoordinator(hass, "user@example.com")
@@ -63,37 +63,33 @@ async def test_async_shutdown_stops_stream(
     client.__aexit__.assert_awaited()
 
 
-async def test_space_update_callback(
-    hass: HomeAssistant, mock_client
-) -> None:
+async def test_space_update_callback(hass: HomeAssistant, mock_client) -> None:
     """Space stream updates should be applied to the snapshot."""
     _client, _stream = mock_client
     coordinator = QuiltCoordinator(hass, "user@example.com")
     await coordinator.async_setup()
 
     from .conftest import make_space
+
     updated_space = make_space(ambient_temp_c=25.0)
     coordinator._on_space_update(updated_space)
     coordinator.data.apply_space.assert_called_once_with(updated_space)
 
 
-async def test_idu_update_callback(
-    hass: HomeAssistant, mock_client
-) -> None:
+async def test_idu_update_callback(hass: HomeAssistant, mock_client) -> None:
     """IDU stream updates should be applied to the snapshot."""
     _client, _stream = mock_client
     coordinator = QuiltCoordinator(hass, "user@example.com")
     await coordinator.async_setup()
 
     from .conftest import make_idu
+
     updated_idu = make_idu()
     coordinator._on_idu_update(updated_idu)
     coordinator.data.apply_indoor_unit.assert_called_once_with(updated_idu)
 
 
-async def test_polling_fallback(
-    hass: HomeAssistant, mock_client
-) -> None:
+async def test_polling_fallback(hass: HomeAssistant, mock_client) -> None:
     """_async_update_data should invalidate and re-fetch the snapshot."""
     client, _stream = mock_client
     coordinator = QuiltCoordinator(hass, "user@example.com")

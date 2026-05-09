@@ -5,14 +5,13 @@ Provides sensor entities for:
 - IndoorUnit: temp, humidity, fan RPM, inlet/outlet temp, presence level,
               COP, HVAC capacity (W), HVAC power (W)
 - OutdoorUnit: ambient temp, compressor frequency, pressures
-- Energy: per-space hourly kWh (polled separately)
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from typing import Any, override
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -24,13 +23,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     REVOLUTIONS_PER_MINUTE,
-    UnitOfEnergy,
     UnitOfFrequency,
     UnitOfPower,
     UnitOfPressure,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from quilt_hp.models.indoor_unit import IndoorUnit
@@ -41,8 +40,8 @@ from .const import DOMAIN
 from .coordinator import QuiltCoordinator
 from .entity import QuiltEntity, idu_device_info, odu_device_info, space_device_info
 
-
 # ── Space sensors ─────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True, kw_only=True)
 class SpaceSensorDescription(SensorEntityDescription):
@@ -62,6 +61,7 @@ SPACE_SENSOR_DESCRIPTIONS: tuple[SpaceSensorDescription, ...] = (
 
 
 # ── IndoorUnit sensors ────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True, kw_only=True)
 class IDUSensorDescription(SensorEntityDescription):
@@ -157,6 +157,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
 
 # ── OutdoorUnit sensors ───────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True, kw_only=True)
 class ODUSensorDescription(SensorEntityDescription):
     value_fn: Callable[[OutdoorUnit], Any] = lambda _: None
@@ -180,7 +181,9 @@ ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfFrequency.HERTZ,
         value_fn=lambda odu: (
-            odu.performance_data.compressor_frequency_hz if odu.performance_data else None
+            odu.performance_data.compressor_frequency_hz
+            if odu.performance_data
+            else None
         ),
         entity_registry_enabled_default=False,
     ),
@@ -211,6 +214,7 @@ ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
 
 # ── Platform setup ────────────────────────────────────────────────────────────
 
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -225,23 +229,24 @@ async def async_setup_entry(
     for space in snapshot.spaces:
         if not space.is_room:
             continue
-        for desc in SPACE_SENSOR_DESCRIPTIONS:
-            entities.append(QuiltSpaceSensor(coordinator, space.id, desc))
+        for space_desc in SPACE_SENSOR_DESCRIPTIONS:
+            entities.append(QuiltSpaceSensor(coordinator, space.id, space_desc))
 
     # IndoorUnit sensors
     for idu in snapshot.indoor_units:
-        for desc in IDU_SENSOR_DESCRIPTIONS:
-            entities.append(QuiltIDUSensor(coordinator, idu.id, desc))
+        for idu_desc in IDU_SENSOR_DESCRIPTIONS:
+            entities.append(QuiltIDUSensor(coordinator, idu.id, idu_desc))
 
     # OutdoorUnit sensors
     for odu in snapshot.outdoor_units:
-        for desc in ODU_SENSOR_DESCRIPTIONS:
-            entities.append(QuiltODUSensor(coordinator, odu.id, desc))
+        for odu_desc in ODU_SENSOR_DESCRIPTIONS:
+            entities.append(QuiltODUSensor(coordinator, odu.id, odu_desc))
 
     async_add_entities(entities)
 
 
 # ── Sensor entity classes ─────────────────────────────────────────────────────
+
 
 class QuiltSpaceSensor(QuiltEntity, SensorEntity):
     """Sensor entity for a Quilt space."""
@@ -254,20 +259,23 @@ class QuiltSpaceSensor(QuiltEntity, SensorEntity):
         space_id: str,
         description: SpaceSensorDescription,
     ) -> None:
+        """Initialize the space sensor entity."""
         super().__init__(coordinator)
         self.entity_description = description
-        self._space_id = space_id
-        self._attr_unique_id = f"quilt_space_{space_id}_{description.key}"
+        self._space_id: str = space_id
+        self._attr_unique_id: str = f"quilt_space_{space_id}_{description.key}"
 
     @property
     def _space(self) -> Space:
-        return next(s for s in self.coordinator.data.spaces if s.id == self._space_id)
+        return self.coordinator.spaces_by_id[self._space_id]
 
     @property
-    def device_info(self):
+    @override
+    def device_info(self) -> DeviceInfo:
         return space_device_info(self._space)
 
     @property
+    @override
     def native_value(self) -> Any:
         return self.entity_description.value_fn(self._space)
 
@@ -283,26 +291,30 @@ class QuiltIDUSensor(QuiltEntity, SensorEntity):
         idu_id: str,
         description: IDUSensorDescription,
     ) -> None:
+        """Initialize the indoor unit sensor entity."""
         super().__init__(coordinator)
         self.entity_description = description
-        self._idu_id = idu_id
-        self._attr_unique_id = f"quilt_idu_{idu_id}_{description.key}"
+        self._idu_id: str = idu_id
+        self._attr_unique_id: str = f"quilt_idu_{idu_id}_{description.key}"
 
     @property
     def _idu(self) -> IndoorUnit:
-        return next(u for u in self.coordinator.data.indoor_units if u.id == self._idu_id)
+        return self.coordinator.idu_by_id[self._idu_id]
 
     @property
-    def device_info(self):
+    @override
+    def device_info(self) -> DeviceInfo:
         idu = self._idu
-        space = next((s for s in self.coordinator.data.spaces if s.id == idu.space_id), None)
+        space = self.coordinator.spaces_by_id[idu.space_id]
         return idu_device_info(idu, space)
 
     @property
+    @override
     def available(self) -> bool:
         return super().available and self.entity_description.available_fn(self._idu)
 
     @property
+    @override
     def native_value(self) -> Any:
         return self.entity_description.value_fn(self._idu)
 
@@ -318,19 +330,22 @@ class QuiltODUSensor(QuiltEntity, SensorEntity):
         odu_id: str,
         description: ODUSensorDescription,
     ) -> None:
+        """Initialize the outdoor unit sensor entity."""
         super().__init__(coordinator)
         self.entity_description = description
-        self._odu_id = odu_id
-        self._attr_unique_id = f"quilt_odu_{odu_id}_{description.key}"
+        self._odu_id: str = odu_id
+        self._attr_unique_id: str = f"quilt_odu_{odu_id}_{description.key}"
 
     @property
     def _odu(self) -> OutdoorUnit:
-        return next(u for u in self.coordinator.data.outdoor_units if u.id == self._odu_id)
+        return self.coordinator.odu_by_id[self._odu_id]
 
     @property
-    def device_info(self):
+    @override
+    def device_info(self) -> DeviceInfo:
         return odu_device_info(self._odu)
 
     @property
+    @override
     def native_value(self) -> Any:
         return self.entity_description.value_fn(self._odu)

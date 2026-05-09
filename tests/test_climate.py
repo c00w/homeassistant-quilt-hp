@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
-import pytest
 from homeassistant.components.climate import HVACMode
-from homeassistant.core import HomeAssistant
+import pytest
+from quilt_hp.models.enums import HVACMode as QHVACMode
 
 from custom_components.quilt_hp.climate import QuiltClimateEntity
-from quilt_hp.models.enums import HVACMode as QHVACMode
 
 from .conftest import make_mock_coordinator, make_snapshot, make_space
 
 
 @pytest.fixture
 def coordinator(hass):
-    space = make_space(hvac_mode=QHVACMode.HEAT, ambient_temp_c=21.0, heat_setpoint_c=22.0, cool_setpoint_c=25.0)
+    space = make_space(
+        hvac_mode=QHVACMode.HEAT,
+        ambient_temp_c=21.0,
+        heat_setpoint_c=22.0,
+        cool_setpoint_c=25.0,
+    )
     snapshot = make_snapshot(spaces=[space])
     return make_mock_coordinator(hass, snapshot)
 
@@ -42,7 +46,9 @@ def test_target_temperature_heat_mode(coordinator) -> None:
 
 
 def test_target_temperature_range(hass) -> None:
-    space = make_space(hvac_mode=QHVACMode.AUTO, heat_setpoint_c=18.0, cool_setpoint_c=26.0)
+    space = make_space(
+        hvac_mode=QHVACMode.AUTO, heat_setpoint_c=18.0, cool_setpoint_c=26.0
+    )
     coordinator = make_mock_coordinator(hass, make_snapshot(spaces=[space]))
     entity = QuiltClimateEntity(coordinator, "space-001")
     assert entity.target_temperature_low == 18.0
@@ -57,12 +63,23 @@ async def test_set_hvac_mode(coordinator) -> None:
     assert call_kwargs["mode"] == QHVACMode.COOL
 
 
-async def test_set_temperature_single(coordinator) -> None:
+async def test_set_temperature_single_heat(coordinator) -> None:
     entity = QuiltClimateEntity(coordinator, "space-001")
+    # Coordinator fixture sets mode to HEAT by default
     await entity.async_set_temperature(temperature=23.0)
     coordinator.client.set_space.assert_awaited_once()
     call_kwargs = coordinator.client.set_space.call_args[1]
-    assert call_kwargs["cool_setpoint_c"] == 23.0
+    assert call_kwargs["heat_setpoint_c"] == 23.0
+
+
+async def test_set_temperature_single_cool(hass) -> None:
+    space = make_space(hvac_mode=QHVACMode.COOL)
+    coordinator = make_mock_coordinator(hass, make_snapshot(spaces=[space]))
+    entity = QuiltClimateEntity(coordinator, "space-001")
+    await entity.async_set_temperature(temperature=24.0)
+    coordinator.client.set_space.assert_awaited_once()
+    call_kwargs = coordinator.client.set_space.call_args[1]
+    assert call_kwargs["cool_setpoint_c"] == 24.0
 
 
 async def test_set_temperature_range(coordinator) -> None:

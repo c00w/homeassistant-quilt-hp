@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, override
 
 from homeassistant.components.climate import (
+    ATTR_TARGET_TEMP_HIGH,
+    ATTR_TARGET_TEMP_LOW,
     ClimateEntity,
     ClimateEntityFeature,
     HVACAction,
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_TEMPERATURE, ATTR_TARGET_TEMP_HIGH, ATTR_TARGET_TEMP_LOW, UnitOfTemperature
+from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from quilt_hp.models.enums import HVACMode as QHVACMode, HVACState as QHVACState
+from quilt_hp.models.space import Space
 
 from .const import DOMAIN
 from .coordinator import QuiltCoordinator
@@ -75,41 +79,47 @@ async def async_setup_entry(
 class QuiltClimateEntity(QuiltEntity, ClimateEntity):
     """Climate entity representing a Quilt space (room)."""
 
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_hvac_modes = list(_HA_TO_Q.keys())
-    _attr_supported_features = (
+    _attr_temperature_unit: UnitOfTemperature = UnitOfTemperature.CELSIUS
+    _attr_supported_features: ClimateEntityFeature = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
     )
-    _attr_translation_key = "climate"
+    _attr_translation_key: str = "climate"
 
     def __init__(self, coordinator: QuiltCoordinator, space_id: str) -> None:
+        """Initialize the climate entity."""
         super().__init__(coordinator)
-        self._space_id = space_id
-        self._attr_unique_id = f"quilt_space_climate_{space_id}"
-        self._attr_name = None  # use device name as entity name
+        self._space_id: str = space_id
+        self._attr_unique_id: str = f"quilt_space_climate_{space_id}"
+        self._attr_name: str | None = None  # use device name as entity name
+        self._attr_hvac_modes: list[HVACMode] = list(_HA_TO_Q.keys())
 
     @property
-    def _space(self):
-        return next(s for s in self.coordinator.data.spaces if s.id == self._space_id)
+    def _space(self) -> Space:
+        return self.coordinator.spaces_by_id[self._space_id]
 
     @property
-    def device_info(self):
+    @override
+    def device_info(self) -> DeviceInfo:
         return space_device_info(self._space)
 
     @property
+    @override
     def hvac_mode(self) -> HVACMode:
         return _Q_TO_HA.get(self._space.controls.hvac_mode, HVACMode.OFF)
 
     @property
+    @override
     def hvac_action(self) -> HVACAction | None:
         return _Q_STATE_TO_HA_ACTION.get(self._space.state.hvac_state)
 
     @property
+    @override
     def current_temperature(self) -> float | None:
         return self._space.state.ambient_temperature_c
 
     @property
+    @override
     def target_temperature(self) -> float | None:
         mode = self._space.controls.hvac_mode
         if mode == QHVACMode.COOL:
@@ -119,21 +129,32 @@ class QuiltClimateEntity(QuiltEntity, ClimateEntity):
         return None
 
     @property
+    @override
     def target_temperature_high(self) -> float | None:
         return self._space.controls.cooling_setpoint_c or None
 
     @property
+    @override
     def target_temperature_low(self) -> float | None:
         return self._space.controls.heating_setpoint_c or None
 
+    @override
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         quilt_mode = _HA_TO_Q[hvac_mode]
         await self.coordinator.client.set_space(self._space, mode=quilt_mode)
         await self.coordinator.async_request_refresh()
 
+    @override
     async def async_set_temperature(self, **kwargs: Any) -> None:
         heat_sp = kwargs.get(ATTR_TARGET_TEMP_LOW)
-        cool_sp = kwargs.get(ATTR_TARGET_TEMP_HIGH) or kwargs.get(ATTR_TEMPERATURE)
+        cool_sp = kwargs.get(ATTR_TARGET_TEMP_HIGH)
+
+        if (temp := kwargs.get(ATTR_TEMPERATURE)) is not None:
+            if self.hvac_mode == HVACMode.HEAT:
+                heat_sp = temp
+            else:
+                cool_sp = temp
+
         await self.coordinator.client.set_space(
             self._space,
             heat_setpoint_c=heat_sp,

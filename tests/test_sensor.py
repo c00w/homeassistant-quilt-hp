@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-from homeassistant.core import HomeAssistant
 
 from custom_components.quilt_hp.sensor import (
     IDU_SENSOR_DESCRIPTIONS,
@@ -14,7 +13,13 @@ from custom_components.quilt_hp.sensor import (
     QuiltSpaceSensor,
 )
 
-from .conftest import make_idu, make_mock_coordinator, make_odu, make_snapshot, make_space
+from .conftest import (
+    make_idu,
+    make_mock_coordinator,
+    make_odu,
+    make_snapshot,
+    make_space,
+)
 
 
 @pytest.fixture

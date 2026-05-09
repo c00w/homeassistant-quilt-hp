@@ -7,6 +7,52 @@ on:
     - cron: "0 0 * * *"
 
 jobs:
+  lint:
+    name: Linting and Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: pip install ruff
+      - name: Run Ruff
+        run: ruff check . && ruff format --check .
+
+  type-check:
+    name: Type Checking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install .
+      - name: Run Mypy
+        run: mypy custom_components/quilt_hp
+      - name: Run Basedpyright
+        run: basedpyright custom_components/quilt_hp
+
+  tests:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run Tests
+        run: pytest
+
   hacs:
     name: HACS Action
     runs-on: ubuntu-latest

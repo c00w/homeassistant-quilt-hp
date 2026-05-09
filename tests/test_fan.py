@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from homeassistant.core import HomeAssistant
+from quilt_hp.models.enums import FanSpeed
 
 from custom_components.quilt_hp.fan import QuiltFanEntity, _pct_to_fan_speed
-from quilt_hp.models.enums import FanSpeed
 
 from .conftest import make_idu, make_mock_coordinator, make_snapshot
 

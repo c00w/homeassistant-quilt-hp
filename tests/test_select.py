@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import pytest
-from homeassistant.core import HomeAssistant
-
-from custom_components.quilt_hp.select import QuiltLouverAngleSelect, QuiltLouverModeSelect
 from quilt_hp.models.enums import LouverAngle, LouverMode
+
+from custom_components.quilt_hp.select import (
+    QuiltLouverAngleSelect,
+    QuiltLouverModeSelect,
+)
 
 from .conftest import make_idu, make_mock_coordinator, make_snapshot
 
@@ -20,7 +22,9 @@ def coordinator_sweep(hass):
 
 @pytest.fixture
 def coordinator_fixed(hass):
-    idu = make_idu(louver_mode=LouverMode.FIXED, louver_fixed_position=LouverAngle.ANGLE3.to_wire())
+    idu = make_idu(
+        louver_mode=LouverMode.FIXED, louver_fixed_position=LouverAngle.ANGLE3.to_wire()
+    )
     snapshot = make_snapshot(indoor_units=[idu])
     return make_mock_coordinator(hass, snapshot)
 
@@ -52,4 +56,6 @@ async def test_louver_angle_select(coordinator_fixed) -> None:
     await entity.async_select_option("angle_5")
     call_kwargs = coordinator_fixed.client.set_indoor_unit.call_args[1]
     assert call_kwargs["louver_mode"] == LouverMode.FIXED
-    assert abs(call_kwargs["louver_fixed_position"] - LouverAngle.ANGLE5.to_wire()) < 0.01
+    assert (
+        abs(call_kwargs["louver_position"] - LouverAngle.ANGLE5.to_wire()) < 0.01
+    )
