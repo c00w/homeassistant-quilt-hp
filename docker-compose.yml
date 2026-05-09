@@ -1,0 +1,16 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant-quilt-hp
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    environment:
+      - TZ=America/Los_Angeles
+    volumes:
+      # Persistent HA config (configuration.yaml, .storage/, logs, etc.)
+      - ./config:/config
+      # Mount the integration directly into the container's custom_components.
+      # This overlay takes precedence over the parent /config mount so edits
+      # to the source are reflected immediately (restart HA to reload).
+      - ./custom_components/quilt_hp:/config/custom_components/quilt_hp:ro
