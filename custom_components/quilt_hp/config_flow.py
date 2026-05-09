@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
-from typing import Any
+from typing import Any, override
 
-import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
+import voluptuous as vol
 
-from quilt_hp import QuiltClient
+from quilt_hp import QuiltClient  # type: ignore[attr-defined]
 from quilt_hp.exceptions import QuiltAuthError
 
 from .const import CONF_EMAIL, CONF_HOME_NAME, CONF_SYSTEM_ID, DOMAIN
@@ -18,25 +19,26 @@ from .token_store import HATokenStore
 _LOGGER = logging.getLogger(__name__)
 
 
-class _AwaitingOTP(Exception):
-    """Sentinel: interrupts the login coroutine while the user enters the OTP."""
-
-
 class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow: email → OTP → (home selection if multiple) → done."""
 
-    VERSION = 1
+    VERSION: int = 1
 
     def __init__(self) -> None:
+        """Initialize the config flow."""
         self._email: str = ""
         self._client: QuiltClient | None = None
-        # List of (system_id, name) tuples, populated after login
         self._systems: list[tuple[str, str]] = []
+        # Login task kept alive across steps so the Cognito challenge session
+        # is preserved. Resolved via _otp_future when the user submits the OTP.
+        self._login_task: asyncio.Task[None] | None = None
+        self._otp_future: asyncio.Future[str] | None = None
 
     # ------------------------------------------------------------------
     # Step 1: collect the email address and trigger the OTP send
     # ------------------------------------------------------------------
 
+    @override
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
@@ -45,22 +47,13 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             self._email = user_input[CONF_EMAIL].strip().lower()
-
-            token_store = HATokenStore(self.hass)
-            self._client = QuiltClient(self._email, token_store=token_store)
-
-            try:
-                await self._client.__aenter__()
-                await self._client.login(otp_callback=self._send_otp)
-            except _AwaitingOTP:
+            otp_needed, error_key = await self._initiate_login()
+            if error_key:
+                errors["base"] = error_key
+            elif otp_needed:
                 return await self.async_step_otp()
-            except QuiltAuthError:
-                errors["base"] = "cannot_connect"
-                await self._cleanup_client()
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected error initiating Quilt login")
-                errors["base"] = "unknown"
-                await self._cleanup_client()
+            else:
+                return await self._route_after_login()
 
         return self.async_show_form(
             step_id="user",
@@ -68,35 +61,85 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def _send_otp(self, email: str) -> str:  # noqa: ARG002
-        """Called by QuiltClient.login() to collect the OTP.
+    async def _initiate_login(self) -> tuple[bool, str | None]:
+        """Create a client and start the login task.
 
-        Raises ``_AwaitingOTP`` to pause the login coroutine; the actual code
-        will be supplied in ``async_step_otp``.
+        Returns ``(otp_needed, error_key)``.  When *otp_needed* is ``True``
+        the login task is paused waiting for the OTP future and the caller
+        should show the OTP form.  *error_key* is non-``None`` on failure.
         """
-        raise _AwaitingOTP
+        token_store = HATokenStore(self.hass)
+        self._client = QuiltClient(self._email, token_store=token_store)
+        _ = await self._client.__aenter__()
+
+        otp_ready: asyncio.Event = asyncio.Event()
+        self._otp_future = asyncio.get_running_loop().create_future()
+        otp_future = self._otp_future  # capture for the closure
+
+        async def _otp_callback(_: str) -> str:
+            otp_ready.set()
+            return await otp_future
+
+        self._login_task = asyncio.create_task(
+            self._client.login(otp_callback=_otp_callback)
+        )
+
+        # Race: did the login finish immediately (valid cached token) or did
+        # it pause waiting for the OTP?
+        otp_ready_task = asyncio.create_task(otp_ready.wait())
+        done, _ = await asyncio.wait(
+            {self._login_task, otp_ready_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        otp_ready_task.cancel()
+
+        if self._login_task not in done:
+            # Cognito sent the OTP email; login is paused on the future.
+            return True, None
+
+        # Login completed without OTP (cached token) or failed.
+        try:
+            self._login_task.result()
+            return False, None
+        except QuiltAuthError:
+            await self._cleanup_login()
+            return False, "cannot_connect"
+        except Exception:
+            _LOGGER.exception("Unexpected error initiating Quilt login")
+            await self._cleanup_login()
+            return False, "unknown"
 
     # ------------------------------------------------------------------
-    # Step 2: collect the OTP and complete authentication
+    # Step 2: collect the OTP and resume the paused login task
     # ------------------------------------------------------------------
 
     async def async_step_otp(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Collect OTP and finish login, then route to home selection or done."""
+        """Resume the login task with the user-supplied OTP."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
             otp = user_input["otp"].strip()
+            assert self._otp_future is not None
+            assert self._login_task is not None
+
+            self._otp_future.set_result(otp)
             try:
-                await self._client.login(otp_callback=lambda _: otp)  # type: ignore[union-attr]
+                await self._login_task
+                return await self._route_after_login()
             except QuiltAuthError:
                 errors["base"] = "invalid_auth"
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _LOGGER.exception("Unexpected error completing Quilt OTP login")
                 errors["base"] = "unknown"
-            else:
-                # Auth succeeded — check how many homes this account has.
+
+            # Restart so a fresh OTP is sent for the next attempt.
+            await self._cleanup_login()
+            otp_needed, error_key = await self._initiate_login()
+            if error_key:
+                errors["base"] = error_key
+            elif not otp_needed:
                 return await self._route_after_login()
 
         return self.async_show_form(
@@ -109,8 +152,9 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _route_after_login(self) -> config_entries.ConfigFlowResult:
         """After successful login, either pick a home or finish immediately."""
         try:
-            systems = await self._client.list_systems()  # type: ignore[union-attr]
-        except Exception:  # noqa: BLE001
+            assert self._client is not None
+            systems = await self._client.list_systems()
+        except Exception:
             _LOGGER.exception("Could not list Quilt systems")
             # Fall back: create entry without a system_id; coordinator will
             # use the default (first) system.
@@ -145,9 +189,7 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         home_names = [name for _, name in self._systems]
         return self.async_show_form(
             step_id="home",
-            data_schema=vol.Schema(
-                {vol.Required(CONF_HOME_NAME): vol.In(home_names)}
-            ),
+            data_schema=vol.Schema({vol.Required(CONF_HOME_NAME): vol.In(home_names)}),
             description_placeholders={"count": str(len(self._systems))},
         )
 
@@ -161,10 +203,10 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Create the config entry, preventing duplicates per system."""
         # Unique ID: email + system_id so each home gets its own entry.
         unique_id = f"{self._email}_{system_id}" if system_id else self._email
-        await self.async_set_unique_id(unique_id)
+        _ = await self.async_set_unique_id(unique_id)
         self._abort_if_unique_id_configured()
 
-        await self._cleanup_client()
+        await self._cleanup_login()
         title = home_name or self._email
         return self.async_create_entry(
             title=title,
@@ -180,10 +222,11 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # ------------------------------------------------------------------
 
     async def async_step_reauth(
-        self, user_input: dict[str, Any] | None = None  # noqa: ARG002
+        self, _: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Re-authentication entry point — prefill email and re-run OTP flow."""
-        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        entry_id: str = self.context.get("entry_id", "")
+        entry = self.hass.config_entries.async_get_entry(entry_id)
         if entry:
             self._email = entry.data[CONF_EMAIL]
         return await self.async_step_reauth_confirm()
@@ -195,17 +238,13 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            token_store = HATokenStore(self.hass)
-            self._client = QuiltClient(self._email, token_store=token_store)
-            try:
-                await self._client.__aenter__()
-                await self._client.login(otp_callback=self._send_otp)
-            except _AwaitingOTP:
+            otp_needed, error_key = await self._initiate_login()
+            if error_key:
+                errors["base"] = error_key
+            elif otp_needed:
                 return await self.async_step_otp()
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception("Re-auth OTP trigger failed")
-                errors["base"] = "cannot_connect"
-                await self._cleanup_client()
+            else:
+                return await self._route_after_login()
 
         return self.async_show_form(
             step_id="reauth_confirm",
@@ -218,10 +257,16 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # Helpers
     # ------------------------------------------------------------------
 
-    async def _cleanup_client(self) -> None:
+    async def _cleanup_login(self) -> None:
+        """Cancel any in-flight login task and close the client."""
+        if self._login_task is not None and not self._login_task.done():
+            self._login_task.cancel()
+            with contextlib.suppress(Exception):
+                await self._login_task
+        self._login_task = None
+        self._otp_future = None
         if self._client is not None:
-            try:
-                await self._client.__aexit__(None, None, None)
-            except Exception:  # noqa: BLE001
-                pass
+            with contextlib.suppress(Exception):
+                _ = await self._client.__aexit__(None, None, None)
             self._client = None
+
