@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant import config_entries
@@ -9,7 +10,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 import pytest
 
-from custom_components.quilt_hp.config_flow import AwaitingOTPError
 from custom_components.quilt_hp.const import CONF_EMAIL, DOMAIN
 
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
@@ -18,10 +18,29 @@ pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 @pytest.fixture
 def mock_quilt_client():
     """Patch QuiltClient used by the config flow."""
+
     with patch("custom_components.quilt_hp.config_flow.QuiltClient") as mock_cls:
         client = MagicMock()
         client.__aenter__ = AsyncMock(return_value=client)
         client.__aexit__ = AsyncMock(return_value=False)
+
+        async def mock_login(otp_callback=None):
+            """Mock login matching quilt-hp-python 0.2.2 callback pattern.
+            
+            Simulates the OTP flow by calling the callback and waiting
+            for the OTP to be provided via the returned future.
+            """
+            if otp_callback:
+                # Call the callback, which returns a future that we await
+                otp_future = await otp_callback("send otp")
+                # OTP was provided (by the test via _otp_future.set_result)
+                # Simulate successful login after OTP
+                return None
+            else:
+                # No callback means cached token or no OTP needed
+                return None
+
+        client.login = AsyncMock(side_effect=mock_login)
         mock_cls.return_value = client
         yield client
 
@@ -35,6 +54,7 @@ async def test_user_step_shows_form(hass: HomeAssistant) -> None:
     assert result["step_id"] == "user"
 
 
+@pytest.mark.parametrize("expected_lingering_tasks", [True])
 async def test_user_step_proceeds_to_otp(
     hass: HomeAssistant, mock_quilt_client
 ) -> None:
@@ -42,7 +62,6 @@ async def test_user_step_proceeds_to_otp(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    mock_quilt_client.login = AsyncMock(side_effect=AwaitingOTPError)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_EMAIL: "user@example.com"}
@@ -54,9 +73,6 @@ async def test_user_step_proceeds_to_otp(
 
 async def test_otp_step_creates_entry(hass: HomeAssistant, mock_quilt_client) -> None:
     """Valid OTP should create the config entry (single home path)."""
-    mock_quilt_client.login = AsyncMock(
-        side_effect=[AwaitingOTPError, None]  # first call raises, second succeeds
-    )
     sys = MagicMock()
     sys.id = "sys-001"
     sys.name = "My Home"
@@ -85,8 +101,6 @@ async def test_multi_home_shows_selector(
     hass: HomeAssistant, mock_quilt_client
 ) -> None:
     """When multiple homes exist, a home selection step should be shown."""
-    mock_quilt_client.login = AsyncMock(side_effect=[AwaitingOTPError, None])
-
     s1 = MagicMock()
     s1.id = "sys-001"
     s1.name = "Primary Home"
@@ -115,8 +129,6 @@ async def test_multi_home_creates_entry_for_chosen_home(
     hass: HomeAssistant, mock_quilt_client
 ) -> None:
     """Selecting a home should create an entry with the correct system_id."""
-    mock_quilt_client.login = AsyncMock(side_effect=[AwaitingOTPError, None])
-
     s1 = MagicMock()
     s1.id = "sys-001"
     s1.name = "Primary Home"
@@ -145,15 +157,20 @@ async def test_multi_home_creates_entry_for_chosen_home(
     assert result["title"] == "Vacation Home"
 
 
+@pytest.mark.parametrize("expected_lingering_tasks", [True])
 async def test_otp_invalid_auth_shows_error(
     hass: HomeAssistant, mock_quilt_client
 ) -> None:
     """Bad OTP should surface an invalid_auth error."""
     from quilt_hp.exceptions import QuiltAuthError
 
-    mock_quilt_client.login = AsyncMock(
-        side_effect=[AwaitingOTPError, QuiltAuthError("bad otp")]
-    )
+    async def mock_login_with_error(otp_callback=None):
+        """Mock login that raises QuiltAuthError on bad OTP."""
+        if otp_callback:
+            await otp_callback("ignored")
+            raise QuiltAuthError("bad otp")
+
+    mock_quilt_client.login = AsyncMock(side_effect=mock_login_with_error)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
