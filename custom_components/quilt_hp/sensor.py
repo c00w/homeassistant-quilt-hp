@@ -465,7 +465,8 @@ class QuiltODUSensor(QuiltEntity, SensorEntity):
     @property
     @override
     def device_info(self) -> DeviceInfo:
-        return odu_device_info(self._odu)
+        idu = self.coordinator.idu_by_space_id.get(self._odu.space_id) if self._odu.space_id else None
+        return odu_device_info(self._odu, idu)
 
     @property
     @override
