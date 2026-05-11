@@ -34,14 +34,20 @@ def idu_device_info(idu: IndoorUnit, space: Space | None = None) -> DeviceInfo:
     """Build a ``DeviceInfo`` for an IDU and its embedded QSM.
 
     The device is named after the room (Space) it serves, matching how the
-    Quilt app presents it. The model is the IDU's configured name.
+    Quilt app presents it. The model is the IDU's hardware ID (product SKU).
     Spaces are not HA devices; they are surfaced as areas via ``suggested_area``.
     """
+    _LOGGER.debug(
+        "IDU device info: id=%s, hardware_id=%r, settings.name=%r",
+        idu.id,
+        idu.hardware_id,
+        idu.settings.name,
+    )
     info: dict[str, Any] = {
         "identifiers": {(DOMAIN, f"i_{idu.id}")},
         "name": space.name if space else (idu.settings.name or f"IDU {idu.id[:8]}"),
         "manufacturer": _MANUFACTURER,
-        "model": idu.settings.name or "Quilt Smart Module",
+        "model": idu.hardware_id or "Quilt Smart Module",
     }
     if space is not None:
         info["suggested_area"] = space.name
