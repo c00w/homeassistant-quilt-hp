@@ -470,6 +470,11 @@ class QuiltODUSensor(QuiltEntity, SensorEntity):
              if u.outdoor_unit_id == self._odu.id),
             None,
         )
+        _LOGGER.debug(
+            "ODU device_info: odu_id=%s, found_idu_id=%s",
+            self._odu.id,
+            idu.id if idu else None,
+        )
         return odu_device_info(self._odu, idu)
 
     @property

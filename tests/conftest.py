@@ -73,6 +73,7 @@ def make_idu(
     idu_id: str = "idu-001",
     system_id: str = "sys-001",
     space_id: str = "space-001",
+    outdoor_unit_id: str | None = "odu-001",
     online: bool = True,
     fan_speed: FanSpeed = FanSpeed.AUTO,
     louver_mode: LouverMode = LouverMode.AUTO,
@@ -85,7 +86,7 @@ def make_idu(
         id=idu_id,
         system_id=system_id,
         space_id=space_id,
-        outdoor_unit_id=None,
+        outdoor_unit_id=outdoor_unit_id,
         hardware_id="hw-001",
         qsm_id=None,
         settings=IndoorUnitSettings(
