@@ -140,7 +140,7 @@ class QuiltLouverAngleSelect(QuiltEntity, SelectEntity):
     @property
     @override
     def current_option(self) -> str | None:
-        if not self._idu.controls.louver_fixed_position:
+        if self._idu.controls.louver_mode != LouverMode.FIXED:
             return None
         angle = LouverAngle.from_wire(self._idu.controls.louver_fixed_position)
         return _LOUVER_ANGLE_TO_STR.get(angle)
