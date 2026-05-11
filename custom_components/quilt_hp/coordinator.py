@@ -65,6 +65,26 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         self.odu_by_id = {u.id: u for u in data.outdoor_units}
         self.ctrl_by_id = {c.id: c for c in data.controllers}
         self.qsm_by_id = {q.id: q for q in data.quilt_smart_modules}
+
+        for odu in data.outdoor_units:
+            _LOGGER.debug(
+                "SystemSnapshot ODU: id=%s, model_sku=%r, serial=%r, fw=%r",
+                odu.id,
+                odu.model_sku,
+                odu.serial_number,
+                odu.firmware_version,
+            )
+
+        for ctrl in data.controllers:
+            _LOGGER.debug(
+                "SystemSnapshot Controller: id=%s, name=%s, model_sku=%r, serial=%r, fw=%r",
+                ctrl.id,
+                ctrl.name,
+                ctrl.model_sku,
+                ctrl.serial_number,
+                ctrl.firmware_version,
+            )
+
         super().async_set_updated_data(data)
 
     # ------------------------------------------------------------------

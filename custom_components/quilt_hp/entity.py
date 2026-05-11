@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -15,6 +16,7 @@ from quilt_hp.models.space import Space
 from .const import DOMAIN
 from .coordinator import QuiltCoordinator
 
+_LOGGER = logging.getLogger(__name__)
 _MANUFACTURER: str = "Quilt"
 
 
@@ -49,6 +51,13 @@ def idu_device_info(idu: IndoorUnit, space: Space | None = None) -> DeviceInfo:
 
 def odu_device_info(odu: OutdoorUnit) -> DeviceInfo:
     """Build a ``DeviceInfo`` for an outdoor unit."""
+    _LOGGER.debug(
+        "ODU device info: id=%s, model_sku=%r, serial=%r, fw=%r",
+        odu.id,
+        odu.model_sku,
+        odu.serial_number,
+        odu.firmware_version,
+    )
     return DeviceInfo(
         identifiers={(DOMAIN, f"u_{odu.id}")},
         name=f"Outdoor Unit {odu.id[:8]}",
@@ -65,6 +74,14 @@ def controller_device_info(ctrl: Controller, idu: IndoorUnit | None = None) -> D
     The Dial is a physically separate device from the IDU. ``via_device`` links
     it to the IDU in the same space so HA groups them correctly in the UI.
     """
+    _LOGGER.debug(
+        "Controller device info: id=%s, name=%s, model_sku=%r, serial=%r, fw=%r",
+        ctrl.id,
+        ctrl.name,
+        ctrl.model_sku,
+        ctrl.serial_number,
+        ctrl.firmware_version,
+    )
     info: dict[str, Any] = {
         "identifiers": {(DOMAIN, f"c_{ctrl.id}")},
         "name": ctrl.name or "Quilt Dial",
