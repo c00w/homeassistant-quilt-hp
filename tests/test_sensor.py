@@ -68,13 +68,13 @@ def test_idu_fan_rpm(coordinator) -> None:
 
 def test_odu_ambient_temperature(coordinator) -> None:
     desc = next(d for d in ODU_SENSOR_DESCRIPTIONS if d.key == "ambient_temperature")
-    entity = QuiltODUSensor(coordinator, "odu-001", desc)
+    entity = QuiltODUSensor(coordinator, "odu-001", "idu-001", desc)
     assert entity.native_value == 5.0
 
 
 def test_odu_compressor_frequency(coordinator) -> None:
     desc = next(d for d in ODU_SENSOR_DESCRIPTIONS if d.key == "compressor_frequency")
-    entity = QuiltODUSensor(coordinator, "odu-001", desc)
+    entity = QuiltODUSensor(coordinator, "odu-001", "idu-001", desc)
     assert entity.native_value == 55.0
 
 

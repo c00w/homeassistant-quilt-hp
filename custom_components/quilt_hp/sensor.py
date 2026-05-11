@@ -348,10 +348,15 @@ async def async_setup_entry(
             for qsm_desc in QSM_SENSOR_DESCRIPTIONS:
                 entities.append(QuiltQSMSensor(coordinator, idu.id, qsm_desc))
 
-    # OutdoorUnit sensors
-    for odu in snapshot.outdoor_units:
+    # OutdoorUnit sensors — created for each IDU that has an outdoor unit
+    for idu in snapshot.indoor_units:
+        if not idu.outdoor_unit_id:
+            continue
+        odu = coordinator.odu_by_id.get(idu.outdoor_unit_id)
+        if not odu:
+            continue
         for odu_desc in ODU_SENSOR_DESCRIPTIONS:
-            entities.append(QuiltODUSensor(coordinator, odu.id, odu_desc))
+            entities.append(QuiltODUSensor(coordinator, odu.id, idu.id, odu_desc))
 
     # Controller (Dial) sensors
     for ctrl in snapshot.controllers:
@@ -450,13 +455,15 @@ class QuiltODUSensor(QuiltEntity, SensorEntity):
         self,
         coordinator: QuiltCoordinator,
         odu_id: str,
+        idu_id: str,
         description: ODUSensorDescription,
     ) -> None:
         """Initialize the outdoor unit sensor entity."""
         super().__init__(coordinator)
         self.entity_description = description
         self._odu_id: str = odu_id
-        self._attr_unique_id: str = f"quilt_odu_{odu_id}_{description.key}"
+        self._idu_id: str = idu_id
+        self._attr_unique_id: str = f"quilt_odu_{odu_id}_{idu_id}_{description.key}"
 
     @property
     def _odu(self) -> OutdoorUnit:
@@ -465,11 +472,7 @@ class QuiltODUSensor(QuiltEntity, SensorEntity):
     @property
     @override
     def device_info(self) -> DeviceInfo:
-        idu = (
-            self.coordinator.idu_by_space_id.get(self._odu.space_id)
-            if self._odu.space_id
-            else None
-        )
+        idu = self.coordinator.idu_by_id.get(self._idu_id)
         return odu_device_info(self._odu, idu)
 
     @property
