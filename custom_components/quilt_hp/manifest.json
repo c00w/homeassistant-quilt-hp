@@ -1,6 +1,6 @@
 {
   "domain": "quilt_hp",
-  "name": "Quilt Heat Pump",
+  "name": "Quilt",
   "codeowners": [],
   "config_flow": true,
   "documentation": "https://github.com/eman/homeassistant-quilt-hp",
