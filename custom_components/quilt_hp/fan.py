@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, override
+from typing import ClassVar, override
 
 from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.config_entries import ConfigEntry
@@ -21,21 +21,34 @@ from .entity import QuiltEntity, idu_device_info
 # AUTO maps to 0 % (no explicit setpoint).
 _FAN_TO_PCT: dict[FanSpeed, int] = {
     FanSpeed.AUTO: 0,
-    FanSpeed.QUIET: 17,
-    FanSpeed.LOW: 33,
-    FanSpeed.MEDIUM: 50,
-    FanSpeed.HIGH: 67,
+    FanSpeed.QUIET: 20,
+    FanSpeed.LOW: 40,
+    FanSpeed.MEDIUM: 60,
+    FanSpeed.HIGH: 80,
     FanSpeed.BLAST: 100,
 }
 
 _PCT_THRESHOLDS: list[tuple[int, FanSpeed]] = [
-    (8, FanSpeed.AUTO),
-    (25, FanSpeed.QUIET),
-    (42, FanSpeed.LOW),
-    (58, FanSpeed.MEDIUM),
-    (83, FanSpeed.HIGH),
+    (10, FanSpeed.AUTO),
+    (30, FanSpeed.QUIET),
+    (50, FanSpeed.LOW),
+    (70, FanSpeed.MEDIUM),
+    (90, FanSpeed.HIGH),
     (101, FanSpeed.BLAST),
 ]
+
+_PRESET_TO_FAN: dict[str, FanSpeed] = {
+    "auto": FanSpeed.AUTO,
+    "quiet": FanSpeed.QUIET,
+    "low": FanSpeed.LOW,
+    "medium": FanSpeed.MEDIUM,
+    "high": FanSpeed.HIGH,
+    "blast": FanSpeed.BLAST,
+}
+
+_FAN_TO_PRESET: dict[FanSpeed, str] = {
+    speed: preset for preset, speed in _PRESET_TO_FAN.items()
+}
 
 
 def _pct_to_fan_speed(pct: int) -> FanSpeed:
@@ -61,7 +74,10 @@ async def async_setup_entry(
 class QuiltFanEntity(QuiltEntity, FanEntity):
     """Fan entity representing an indoor unit's fan speed control."""
 
-    _attr_supported_features: FanEntityFeature = FanEntityFeature.SET_SPEED
+    _attr_supported_features: FanEntityFeature = (
+        FanEntityFeature.SET_SPEED | FanEntityFeature.PRESET_MODE
+    )
+    _attr_preset_modes: ClassVar[list[str]] = list(_PRESET_TO_FAN.keys())
     _attr_translation_key: str = "fan"
 
     def __init__(self, coordinator: QuiltCoordinator, idu_id: str) -> None:
@@ -90,12 +106,17 @@ class QuiltFanEntity(QuiltEntity, FanEntity):
     @property
     @override
     def is_on(self) -> bool:
-        return self._idu.controls.fan_speed != FanSpeed.AUTO or self._idu.is_online
+        return self._idu.controls.fan_speed != FanSpeed.AUTO
 
     @property
     @override
     def percentage(self) -> int | None:
         return _FAN_TO_PCT.get(self._idu.controls.fan_speed)
+
+    @property
+    @override
+    def preset_mode(self) -> str | None:
+        return _FAN_TO_PRESET.get(self._idu.controls.fan_speed)
 
     @property
     @override
@@ -105,25 +126,11 @@ class QuiltFanEntity(QuiltEntity, FanEntity):
     @override
     async def async_set_percentage(self, percentage: int) -> None:
         fan_speed = _pct_to_fan_speed(percentage)
-        await self.coordinator.client.set_indoor_unit(self._idu, fan_speed=fan_speed)
+        await self.coordinator.async_set_indoor_unit(self._idu, fan_speed=fan_speed)
         await self.coordinator.async_request_refresh()
 
     @override
-    async def async_turn_on(
-        self,
-        percentage: int | None = None,
-        preset_mode: str | None = None,
-        **kwargs: Any,
-    ) -> None:
-        speed = (
-            _pct_to_fan_speed(percentage) if percentage is not None else FanSpeed.AUTO
-        )
-        await self.coordinator.client.set_indoor_unit(self._idu, fan_speed=speed)
-        await self.coordinator.async_request_refresh()
-
-    @override
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.client.set_indoor_unit(
-            self._idu, fan_speed=FanSpeed.AUTO
-        )
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        fan_speed = _PRESET_TO_FAN[preset_mode]
+        await self.coordinator.async_set_indoor_unit(self._idu, fan_speed=fan_speed)
         await self.coordinator.async_request_refresh()

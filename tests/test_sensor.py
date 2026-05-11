@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from custom_components.quilt_hp.sensor import (
@@ -32,9 +34,18 @@ def coordinator(hass):
 
 
 def test_space_ambient_temperature(coordinator) -> None:
-    desc = next(d for d in SPACE_SENSOR_DESCRIPTIONS if d.key == "ambient_temperature")
-    entity = QuiltSpaceSensor(coordinator, "space-001", desc)
+    desc = next(d for d in SPACE_SENSOR_DESCRIPTIONS if d.key == "space_temperature")
+    entity = QuiltSpaceSensor(coordinator, "space-001", "idu-001", desc)
     assert entity.native_value == 21.5
+
+
+def test_space_ambient_temperature_nan_is_none(hass) -> None:
+    space = make_space(ambient_temp_c=21.5)
+    space.state.ambient_temperature_c = math.nan
+    coordinator = make_mock_coordinator(hass, make_snapshot(spaces=[space]))
+    desc = next(d for d in SPACE_SENSOR_DESCRIPTIONS if d.key == "space_temperature")
+    entity = QuiltSpaceSensor(coordinator, "space-001", "idu-001", desc)
+    assert entity.native_value is None
 
 
 def test_idu_ambient_temperature(coordinator) -> None:
@@ -73,3 +84,12 @@ def test_idu_unavailable_when_offline(hass) -> None:
     desc = next(d for d in IDU_SENSOR_DESCRIPTIONS if d.key == "ambient_temperature")
     entity = QuiltIDUSensor(coordinator, "idu-001", desc)
     assert not entity.available
+
+
+def test_idu_inlet_temperature_keeps_zero_value(hass) -> None:
+    idu = make_idu()
+    idu.state.inlet_temperature_c = 0.0
+    coordinator = make_mock_coordinator(hass, make_snapshot(indoor_units=[idu]))
+    desc = next(d for d in IDU_SENSOR_DESCRIPTIONS if d.key == "inlet_temperature")
+    entity = QuiltIDUSensor(coordinator, "idu-001", desc)
+    assert entity.native_value == 0.0

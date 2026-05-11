@@ -185,7 +185,7 @@ def make_mock_coordinator(hass: HomeAssistant, snapshot=None) -> MagicMock:
     coordinator.odu_by_id = {u.id: u for u in data.outdoor_units}
     coordinator.last_update_success = True
     coordinator.client = MagicMock()
-    coordinator.client.set_space = AsyncMock()
-    coordinator.client.set_indoor_unit = AsyncMock()
+    coordinator.async_set_space = AsyncMock()
+    coordinator.async_set_indoor_unit = AsyncMock()
     coordinator.async_request_refresh = AsyncMock()
     return coordinator

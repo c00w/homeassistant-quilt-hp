@@ -2,26 +2,29 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 import contextlib
 from datetime import timedelta
 import logging
-from typing import Any, override
+from typing import Any, TypeVar, override
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from quilt_hp import QuiltClient  # type: ignore[attr-defined]
+from quilt_hp.exceptions import QuiltError
+from quilt_hp.models.controller import Controller
 from quilt_hp.models.indoor_unit import IndoorUnit
 from quilt_hp.models.outdoor_unit import OutdoorUnit
 from quilt_hp.models.qsm import QuiltSmartModule
 from quilt_hp.models.space import Space
-from quilt_hp.models.controller import Controller
 from quilt_hp.models.system import SystemSnapshot
 
 from .const import COORDINATOR_UPDATE_INTERVAL_MINUTES, DOMAIN
 from .token_store import HATokenStore
 
 _LOGGER = logging.getLogger(__name__)
+_T = TypeVar("_T")
 
 
 class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
@@ -72,6 +75,20 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
     def client(self) -> QuiltClient:
         """Expose the underlying QuiltClient for entity write operations."""
         return self._client
+
+    async def async_set_space(self, space: Space, **kwargs: Any) -> Space:
+        """Set space fields with one transparent auth-refresh retry."""
+        return await self._with_auth_retry(
+            lambda: self._client.set_space(space, **kwargs)
+        )
+
+    async def async_set_indoor_unit(
+        self, indoor_unit: IndoorUnit, **kwargs: Any
+    ) -> IndoorUnit:
+        """Set indoor unit fields with one transparent auth-refresh retry."""
+        return await self._with_auth_retry(
+            lambda: self._client.set_indoor_unit(indoor_unit, **kwargs)
+        )
 
     async def async_setup(self) -> None:
         """Open gRPC channel, login, fetch initial snapshot, start stream."""
@@ -147,3 +164,14 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
             return await self._client.get_snapshot(system_id=self._system_id)
         except Exception as err:
             raise UpdateFailed(f"Error fetching Quilt snapshot: {err}") from err
+
+    async def _with_auth_retry(self, operation: Callable[[], Awaitable[_T]]) -> _T:
+        """Retry one write after re-login when access token has expired."""
+        try:
+            return await operation()
+        except QuiltError as err:
+            if "jwt is expired" not in str(err).lower():
+                raise
+
+        await self._client.login()
+        return await operation()

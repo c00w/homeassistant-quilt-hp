@@ -6,10 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
 import pytest
+from quilt_hp.exceptions import QuiltError
 
 from custom_components.quilt_hp.coordinator import QuiltCoordinator
 
-from .conftest import make_snapshot
+from .conftest import make_idu, make_snapshot, make_space
 
 
 @pytest.fixture
@@ -101,3 +102,38 @@ async def test_polling_fallback(hass: HomeAssistant, mock_client) -> None:
     result = await coordinator._async_update_data()
     client.invalidate_snapshot.assert_called()
     assert result is new_snapshot
+
+
+async def test_async_set_indoor_unit_retries_on_expired_jwt(
+    hass: HomeAssistant, mock_client
+) -> None:
+    client, _stream = mock_client
+    coordinator = QuiltCoordinator(hass, "user@example.com")
+    await coordinator.async_setup()
+
+    idu = make_idu()
+    client.set_indoor_unit = AsyncMock(
+        side_effect=[QuiltError("UpdateIndoorUnit failed: Jwt is expired"), idu]
+    )
+
+    result = await coordinator.async_set_indoor_unit(idu, led_brightness=1.0)
+
+    assert result is idu
+    assert client.set_indoor_unit.await_count == 2
+    assert client.login.await_count == 2  # setup login + retry login
+
+
+async def test_async_set_space_raises_non_auth_error(
+    hass: HomeAssistant, mock_client
+) -> None:
+    client, _stream = mock_client
+    coordinator = QuiltCoordinator(hass, "user@example.com")
+    await coordinator.async_setup()
+
+    space = make_space()
+    client.set_space = AsyncMock(
+        side_effect=QuiltError("UpdateSpace failed: bad request")
+    )
+
+    with pytest.raises(QuiltError):
+        await coordinator.async_set_space(space, mode=space.controls.hvac_mode)

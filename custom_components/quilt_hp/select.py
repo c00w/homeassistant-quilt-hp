@@ -104,7 +104,7 @@ class QuiltLouverModeSelect(QuiltEntity, SelectEntity):
     @override
     async def async_select_option(self, option: str) -> None:
         mode = _STR_TO_LOUVER_MODE[option]
-        await self.coordinator.client.set_indoor_unit(self._idu, louver_mode=mode)
+        await self.coordinator.async_set_indoor_unit(self._idu, louver_mode=mode)
         await self.coordinator.async_request_refresh()
 
 
@@ -135,11 +135,7 @@ class QuiltLouverAngleSelect(QuiltEntity, SelectEntity):
     @property
     @override
     def available(self) -> bool:
-        return (
-            super().available
-            and self._idu.is_online
-            and self._idu.controls.louver_mode == LouverMode.FIXED
-        )
+        return super().available and self._idu.is_online
 
     @property
     @override
@@ -152,7 +148,7 @@ class QuiltLouverAngleSelect(QuiltEntity, SelectEntity):
     @override
     async def async_select_option(self, option: str) -> None:
         angle = _STR_TO_LOUVER_ANGLE[option]
-        await self.coordinator.client.set_indoor_unit(
+        await self.coordinator.async_set_indoor_unit(
             self._idu,
             louver_mode=LouverMode.FIXED,
             louver_position=angle.to_wire(),

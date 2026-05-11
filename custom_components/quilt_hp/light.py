@@ -6,15 +6,18 @@ from typing import Any, override
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
+    ATTR_EFFECT,
     ATTR_RGBW_COLOR,
     ColorMode,
     LightEntity,
+    LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from quilt_hp.models.enums import LedAnimation
 from quilt_hp.models.indoor_unit import IndoorUnit
 
 from .const import DOMAIN
@@ -36,6 +39,19 @@ def _decode_rgbw(code: int) -> tuple[int, int, int, int]:
     return r, g, b, w
 
 
+_EFFECT_TO_ANIMATION: dict[str, LedAnimation] = {
+    "none": LedAnimation.NONE,
+    "sparkle_fade": LedAnimation.SPARKLE_FADE,
+    "twinkle_fade": LedAnimation.TWINKLE_FADE,
+    "dance": LedAnimation.DANCE,
+    "chase": LedAnimation.CHASE,
+}
+
+_ANIMATION_TO_EFFECT: dict[LedAnimation, str] = {
+    animation: effect for effect, animation in _EFFECT_TO_ANIMATION.items()
+}
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -54,6 +70,7 @@ class QuiltLightEntity(QuiltEntity, LightEntity):
 
     _attr_color_mode: ColorMode = ColorMode.RGBW
     _attr_translation_key: str = "light"
+    _attr_supported_features: LightEntityFeature = LightEntityFeature.EFFECT
 
     def __init__(self, coordinator: QuiltCoordinator, idu_id: str) -> None:
         """Initialize the light entity."""
@@ -94,13 +111,25 @@ class QuiltLightEntity(QuiltEntity, LightEntity):
     def rgbw_color(self) -> tuple[int, int, int, int] | None:
         return _decode_rgbw(self._idu.controls.led_color_code)
 
+    @property
+    @override
+    def effect_list(self) -> list[str]:
+        return list(_EFFECT_TO_ANIMATION.keys())
+
+    @property
+    @override
+    def effect(self) -> str | None:
+        return _ANIMATION_TO_EFFECT.get(self._idu.controls.led_animation)
+
     @override
     async def async_turn_on(self, **kwargs: Any) -> None:
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         rgbw = kwargs.get(ATTR_RGBW_COLOR)
+        effect = kwargs.get(ATTR_EFFECT)
 
         brightness_pct = (brightness / 255) if brightness is not None else None
         color_code = _encode_rgbw(*rgbw) if rgbw is not None else None
+        animation = _EFFECT_TO_ANIMATION.get(effect) if effect is not None else None
 
         # Note: Library does not yet support explicit led_state ON/OFF
         # in set_indoor_unit. We control it via brightness and color code.
@@ -108,10 +137,11 @@ class QuiltLightEntity(QuiltEntity, LightEntity):
         if target_brightness is None and self.brightness == 0:
             target_brightness = 1.0
 
-        await self.coordinator.client.set_indoor_unit(
+        await self.coordinator.async_set_indoor_unit(
             self._idu,
             led_brightness=target_brightness,
             led_color_code=color_code,
+            led_animation=animation,
         )
         await self.coordinator.async_request_refresh()
 
@@ -119,7 +149,7 @@ class QuiltLightEntity(QuiltEntity, LightEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:
         # Note: Library does not yet support explicit led_state ON/OFF
         # in set_indoor_unit.
-        await self.coordinator.client.set_indoor_unit(
+        await self.coordinator.async_set_indoor_unit(
             self._idu,
             led_brightness=0.0,
         )

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import math
 from typing import Any, override
 
 from homeassistant.components.sensor import (
@@ -43,9 +44,20 @@ from quilt_hp.models.space import Space
 
 from .const import DOMAIN
 from .coordinator import QuiltCoordinator
-from .entity import QuiltEntity, controller_device_info, idu_device_info, odu_device_info
+from .entity import (
+    QuiltEntity,
+    controller_device_info,
+    idu_device_info,
+    odu_device_info,
+)
 
 # ── Space temperature sensor (on QSM device) ──────────────────────────────────
+
+
+def _normalize_temperature(value: float | None) -> float | None:
+    if value is None or math.isnan(value):
+        return None
+    return value
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -60,7 +72,11 @@ SPACE_SENSOR_DESCRIPTIONS: tuple[SpaceSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda space: space.state.ambient_temperature_c,
+        value_fn=lambda space: (
+            None
+            if getattr(space.state, "has_missing_ambient_temperature", False)
+            else _normalize_temperature(space.state.ambient_temperature_c)
+        ),
     ),
 )
 
@@ -81,7 +97,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda idu: idu.state.ambient_temperature_c,
+        value_fn=lambda idu: _normalize_temperature(idu.state.ambient_temperature_c),
     ),
     IDUSensorDescription(
         key="ambient_humidity",
@@ -104,7 +120,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda idu: idu.state.inlet_temperature_c or None,
+        value_fn=lambda idu: _normalize_temperature(idu.state.inlet_temperature_c),
         entity_registry_enabled_default=False,
     ),
     IDUSensorDescription(
@@ -113,7 +129,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda idu: idu.state.outlet_temperature_c or None,
+        value_fn=lambda idu: _normalize_temperature(idu.state.outlet_temperature_c),
         entity_registry_enabled_default=False,
     ),
     IDUSensorDescription(
@@ -163,7 +179,9 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda idu: idu.state.calculated_ambient_temperature_c or None,
+        value_fn=lambda idu: _normalize_temperature(
+            idu.state.calculated_ambient_temperature_c
+        ),
         entity_registry_enabled_default=False,
     ),
 )
@@ -220,7 +238,9 @@ ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda odu: (
-            odu.performance_data.ambient_temperature_c if odu.performance_data else None
+            _normalize_temperature(odu.performance_data.ambient_temperature_c)
+            if odu.performance_data
+            else None
         ),
     ),
     ODUSensorDescription(
@@ -277,7 +297,7 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda ctrl: ctrl.ambient_temperature_c,
+        value_fn=lambda ctrl: _normalize_temperature(ctrl.ambient_temperature_c),
     ),
     ControllerSensorDescription(
         key="wifi_signal",
@@ -405,7 +425,9 @@ class QuiltIDUSensor(QuiltEntity, SensorEntity):
     @override
     def device_info(self) -> DeviceInfo:
         idu = self._idu
-        space = self.coordinator.spaces_by_id.get(idu.space_id) if idu.space_id else None
+        space = (
+            self.coordinator.spaces_by_id.get(idu.space_id) if idu.space_id else None
+        )
         return idu_device_info(idu, space)
 
     @property
@@ -476,7 +498,11 @@ class QuiltControllerSensor(QuiltEntity, SensorEntity):
     @override
     def device_info(self) -> DeviceInfo:
         ctrl = self._ctrl
-        idu = self.coordinator.idu_by_space_id.get(ctrl.space_id) if ctrl.space_id else None
+        idu = (
+            self.coordinator.idu_by_space_id.get(ctrl.space_id)
+            if ctrl.space_id
+            else None
+        )
         return controller_device_info(ctrl, idu)
 
     @property
@@ -520,7 +546,9 @@ class QuiltQSMSensor(QuiltEntity, SensorEntity):
     @override
     def device_info(self) -> DeviceInfo:
         idu = self._idu
-        space = self.coordinator.spaces_by_id.get(idu.space_id) if idu.space_id else None
+        space = (
+            self.coordinator.spaces_by_id.get(idu.space_id) if idu.space_id else None
+        )
         return idu_device_info(idu, space)
 
     @property
