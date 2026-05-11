@@ -465,15 +465,10 @@ class QuiltODUSensor(QuiltEntity, SensorEntity):
     @property
     @override
     def device_info(self) -> DeviceInfo:
-        idu = next(
-            (u for u in self.coordinator.idu_by_id.values() 
-             if u.outdoor_unit_id == self._odu.id),
-            None,
-        )
-        _LOGGER.debug(
-            "ODU device_info: odu_id=%s, found_idu_id=%s",
-            self._odu.id,
-            idu.id if idu else None,
+        idu = (
+            self.coordinator.idu_by_space_id.get(self._odu.space_id)
+            if self._odu.space_id
+            else None
         )
         return odu_device_info(self._odu, idu)
 
