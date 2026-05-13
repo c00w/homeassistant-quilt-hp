@@ -208,4 +208,6 @@ HA is available at **http://localhost:8124**.
 
 ## License
 
+MIT License. See [LICENSE](LICENSE) for details.
+
 This project is not affiliated with or endorsed by Quilt.
