@@ -52,51 +52,51 @@ default to reduce noise; enable them individually in the HA entity registry.
 
 | Entity | Platform | Default |
 |---|---|---|
-| Climate (HVAC mode + setpoints) | `climate` | ✅ Enabled |
-| Space Temperature | `sensor` | ✅ Enabled |
+| Climate (HVAC mode + setpoints) | `climate` | Enabled |
+| Space Temperature | `sensor` | Enabled |
 
 ### Per Indoor Unit (IDU)
 
 | Entity | Platform | Default |
 |---|---|---|
-| Fan Speed | `fan` | ✅ Enabled |
-| LED Light | `light` | ✅ Enabled |
-| Louver Mode | `select` | ✅ Enabled |
-| Louver Angle | `select` | ✅ Enabled |
-| Temperature (IDU sensor) | `sensor` | ✅ Enabled |
-| Humidity | `sensor` | ✅ Enabled |
-| Fan Speed RPM | `sensor` | ✅ Enabled |
-| Motion | `binary_sensor` | ✅ Enabled |
-| Presence | `binary_sensor` | ✅ Enabled |
-| Occupied | `binary_sensor` | ✅ Enabled |
-| Inlet Temperature | `sensor` | ⬜ Disabled |
-| Outlet Temperature | `sensor` | ⬜ Disabled |
-| Presence Level | `sensor` | ⬜ Disabled |
-| HVAC Capacity | `sensor` | ⬜ Disabled |
-| HVAC Power | `sensor` | ⬜ Disabled |
-| COP | `sensor` | ⬜ Disabled |
-| Calibrated Temperature | `sensor` | ⬜ Disabled |
-| Motion Signal (radar) | `sensor` | ⬜ Disabled |
-| Presence Signal (radar) | `sensor` | ⬜ Disabled |
-| Illuminance | `sensor` | ⬜ Disabled |
-| Online | `binary_sensor` | ⬜ Disabled |
+| Fan Speed | `fan` | Enabled |
+| LED Light | `light` | Enabled |
+| Louver Mode | `select` | Enabled |
+| Louver Angle | `select` | Enabled |
+| Temperature (IDU sensor) | `sensor` | Enabled |
+| Humidity | `sensor` | Enabled |
+| Fan Speed RPM | `sensor` | Enabled |
+| Motion | `binary_sensor` | Enabled |
+| Presence | `binary_sensor` | Enabled |
+| Occupied | `binary_sensor` | Enabled |
+| Inlet Temperature | `sensor` | Disabled |
+| Outlet Temperature | `sensor` | Disabled |
+| Presence Level | `sensor` | Disabled |
+| HVAC Capacity | `sensor` | Disabled |
+| HVAC Power | `sensor` | Disabled |
+| COP | `sensor` | Disabled |
+| Calibrated Temperature | `sensor` | Disabled |
+| Motion Signal (radar) | `sensor` | Disabled |
+| Presence Signal (radar) | `sensor` | Disabled |
+| Illuminance | `sensor` | Disabled |
+| Online | `binary_sensor` | Disabled |
 
 ### Per Outdoor Unit (ODU)
 
 | Entity | Platform | Default |
 |---|---|---|
-| Outdoor Temperature | `sensor` | ✅ Enabled |
-| Compressor Frequency | `sensor` | ⬜ Disabled |
-| High-Side Pressure | `sensor` | ⬜ Disabled |
-| Low-Side Pressure | `sensor` | ⬜ Disabled |
+| Outdoor Temperature | `sensor` | Enabled |
+| Compressor Frequency | `sensor` | Disabled |
+| High-Side Pressure | `sensor` | Disabled |
+| Low-Side Pressure | `sensor` | Disabled |
 
 ### Per Controller (Quilt Dial)
 
 | Entity | Platform | Default |
 |---|---|---|
-| Temperature | `sensor` | ✅ Enabled |
-| Online | `binary_sensor` | ⬜ Disabled |
-| WiFi Signal | `sensor` | ⬜ Disabled |
+| Temperature | `sensor` | Enabled |
+| Online | `binary_sensor` | Disabled |
+| WiFi Signal | `sensor` | Disabled |
 
 ## Dependencies
 
