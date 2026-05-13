@@ -9,6 +9,9 @@ on:
 
 permissions: {}
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   lint:
     name: Linting and Formatting
@@ -34,9 +37,7 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install dependencies
-        run: |
-          pip install -r requirements-dev.txt
-          pip install .
+        run: pip install -r requirements-dev.txt
       - name: Run Mypy
         run: mypy custom_components/quilt_hp
       - name: Run Basedpyright
