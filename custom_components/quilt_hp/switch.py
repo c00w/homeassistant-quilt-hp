@@ -1,0 +1,84 @@
+"""Switch platform for Quilt Heat Pump.
+
+Provides switch entities for:
+- Schedule execution: pause/resume all schedules for the system (per Location).
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, override
+
+from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from quilt_hp.models.system import Location, SystemSnapshot
+
+from .coordinator import QuiltCoordinator
+from .entity import QuiltEntity, location_device_info
+
+if TYPE_CHECKING:
+    from . import QuiltConfigEntry
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: QuiltConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up switch entities from a config entry."""
+    coordinator = entry.runtime_data
+    snapshot: SystemSnapshot | None = coordinator.data
+    if snapshot is None:
+        return
+
+    entities: list[SwitchEntity] = [
+        QuiltScheduleSwitch(coordinator, loc.id) for loc in snapshot.locations
+    ]
+    async_add_entities(entities)
+
+
+class QuiltScheduleSwitch(QuiltEntity, SwitchEntity):
+    """Switch that pauses or resumes all Quilt schedules for a location.
+
+    ``is_on`` means schedules are *running* (not paused).
+    Turning the switch off pauses all schedules; turning it on resumes them.
+    """
+
+    _attr_device_class: SwitchDeviceClass = SwitchDeviceClass.SWITCH
+    _attr_name: str | None = "Schedules"
+    _attr_icon: str = "mdi:calendar-clock"
+
+    def __init__(self, coordinator: QuiltCoordinator, location_id: str) -> None:
+        """Initialize the schedule switch entity."""
+        super().__init__(coordinator)
+        self._location_id: str = location_id
+        self._attr_unique_id: str = f"quilt_schedule_{location_id}"
+
+    @property
+    def _location(self) -> Location:
+        return self.coordinator.location_by_id[self._location_id]
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        return location_device_info(self._location)
+
+    @property
+    @override
+    def is_on(self) -> bool:
+        # True = schedules running (not paused)
+        return not self._location.schedule_paused
+
+    @override
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Resume all schedules."""
+        await self.coordinator.async_set_schedule_execution(paused=False)
+        await self.coordinator.async_request_refresh()
+
+    @override
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Pause all schedules."""
+        await self.coordinator.async_set_schedule_execution(paused=True)
+        await self.coordinator.async_request_refresh()

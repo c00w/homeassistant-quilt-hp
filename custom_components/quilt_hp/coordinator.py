@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 import contextlib
-from datetime import timedelta
+from datetime import UTC, date, datetime, time as dt_time, timedelta
 import logging
 from typing import Any, override
 
@@ -23,13 +23,15 @@ from quilt_hp.models.controller import Controller
 from quilt_hp.models.indoor_unit import IndoorUnit
 from quilt_hp.models.outdoor_unit import OutdoorUnit
 from quilt_hp.models.qsm import QuiltSmartModule
+from quilt_hp.models.sensor import ControllerRemoteSensor, RemoteSensor
 from quilt_hp.models.space import Space
-from quilt_hp.models.system import ComfortSetting, SystemSnapshot
+from quilt_hp.models.system import ComfortSetting, Location, SystemSnapshot
 
 from .const import (
     CONF_POLLING_INTERVAL,
     COORDINATOR_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
+    ENERGY_UPDATE_INTERVAL_MINUTES,
 )
 from .token_store import HATokenStore
 
@@ -79,6 +81,13 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         self.qsm_by_id: dict[str, QuiltSmartModule] = {}
         self.cs_by_id: dict[str, ComfortSetting] = {}
         self.cs_by_space_id: dict[str, list[ComfortSetting]] = {}
+        self.remote_sensor_by_id: dict[str, RemoteSensor] = {}
+        self.ctrl_remote_sensor_by_id: dict[str, ControllerRemoteSensor] = {}
+        self.location_by_id: dict[str, Location] = {}
+        # Energy data — updated at most every ENERGY_UPDATE_INTERVAL_MINUTES
+        self.energy_by_space_id: dict[str, float] = {}
+        self.energy_last_reset: datetime | None = None
+        self._energy_last_fetch: datetime | None = None
 
     @override
     def async_set_updated_data(self, data: SystemSnapshot) -> None:
@@ -94,6 +103,11 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         for cs in data.comfort_settings:
             cs_by_space.setdefault(cs.space_id, []).append(cs)
         self.cs_by_space_id = cs_by_space
+        self.remote_sensor_by_id = {rs.id: rs for rs in data.remote_sensors}
+        self.ctrl_remote_sensor_by_id = {
+            crs.id: crs for crs in data.controller_remote_sensors
+        }
+        self.location_by_id = {loc.id: loc for loc in data.locations}
 
         super().async_set_updated_data(data)
 
@@ -154,6 +168,12 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
             lambda: self._client.set_indoor_unit(indoor_unit, **kwargs)
         )
 
+    async def async_set_schedule_execution(self, *, paused: bool) -> None:
+        """Pause or resume all schedules with one transparent auth-refresh retry."""
+        await self._with_auth_retry(
+            lambda: self._client.set_schedule_execution(paused=paused)
+        )
+
     async def async_setup(self) -> None:
         """Open gRPC channel, login, fetch initial snapshot, start stream."""
         _ = await self._client.__aenter__()
@@ -162,6 +182,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         snapshot = await self._client.get_snapshot(system_id=self._system_id)
         self.async_set_updated_data(snapshot)
 
+        await self._async_update_energy()
         await self._start_stream(snapshot)
 
     @override
@@ -187,6 +208,8 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         stream.on_outdoor_unit_update(self._on_odu_update)
         stream.on_controller_update(self._on_ctrl_update)
         stream.on_qsm_update(self._on_qsm_update)
+        stream.on_remote_sensor_update(self._on_remote_sensor_update)
+        stream.on_controller_remote_sensor_update(self._on_ctrl_remote_sensor_update)
         stream.on_error(self._on_stream_error)
         await stream.start()
         # Only assign after successful start so async_shutdown doesn't try to
@@ -231,6 +254,20 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
             self._on_stream_reconnect()
             self.async_set_updated_data(self.data)
 
+    def _on_remote_sensor_update(self, rs: RemoteSensor) -> None:
+        if self.data:
+            _ = self.data.apply_remote_sensor(rs)
+            self.remote_sensor_by_id[rs.id] = rs
+            self._on_stream_reconnect()
+            self.async_set_updated_data(self.data)
+
+    def _on_ctrl_remote_sensor_update(self, crs: ControllerRemoteSensor) -> None:
+        if self.data:
+            _ = self.data.apply_controller_remote_sensor(crs)
+            self.ctrl_remote_sensor_by_id[crs.id] = crs
+            self._on_stream_reconnect()
+            self.async_set_updated_data(self.data)
+
     # ------------------------------------------------------------------
     # Polling fallback
     # ------------------------------------------------------------------
@@ -239,11 +276,33 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
     async def _async_update_data(self) -> SystemSnapshot:
         try:
             self._client.invalidate_snapshot()
-            return await self._client.get_snapshot(  # type: ignore[no-any-return]
+            snapshot = await self._client.get_snapshot(  # type: ignore[no-any-return]
                 system_id=self._system_id
             )
         except Exception as err:
             raise UpdateFailed(f"Error fetching Quilt snapshot: {err}") from err
+        await self._async_update_energy()
+        return snapshot  # type: ignore[no-any-return]
+
+    async def _async_update_energy(self) -> None:
+        """Fetch today's energy metrics from the API, rate-limited."""
+        now = datetime.now(UTC)
+        if (
+            self._energy_last_fetch is not None
+            and now - self._energy_last_fetch
+            < timedelta(minutes=ENERGY_UPDATE_INTERVAL_MINUTES)
+        ):
+            return
+        try:
+            start = datetime.combine(date.today(), dt_time.min, tzinfo=UTC)
+            metrics = await self._client.get_energy(
+                start, now, system_id=self._system_id
+            )
+            self.energy_by_space_id = {m.space_id: m.total_kwh for m in metrics}
+            self.energy_last_reset = start
+            self._energy_last_fetch = now
+        except Exception as err:
+            _LOGGER.warning("Failed to fetch Quilt energy data: %s", err)
 
     async def _with_auth_retry[T](self, operation: Callable[[], Awaitable[T]]) -> T:
         """Retry one write after re-login when access token has expired.

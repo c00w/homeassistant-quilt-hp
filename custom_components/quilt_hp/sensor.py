@@ -3,16 +3,23 @@
 Provides sensor entities for:
 - QSM/IDU: space temperature (space-calibrated), unit temp, humidity,
            fan RPM, inlet/outlet temp, presence level,
-           COP, HVAC capacity (W), HVAC power (W),
-           calibrated ambient temp, radar signals, illuminance
-- OutdoorUnit: ambient temp, compressor frequency, pressures
-- Controller (Dial): ambient temperature, WiFi signal
+           COP, HVAC capacity (W), HVAC power (W), LED power (W),
+           coil/gas-pipe/liquid-pipe temperatures, inlet humidity,
+           module power, calibrated ambient temp, radar signals, illuminance
+- OutdoorUnit: ambient temp, coil temp, exhaust temp, compressor frequency,
+               pressures
+- Controller (Dial): ambient temperature, PCB temps, calibrated ambient,
+                     WiFi signal, WiFi frequency
+- RemoteSensor (IDU-paired): temperature, humidity, battery, signal
+- ControllerRemoteSensor (Dial-paired): temperature, humidity, battery, signal
+- Space energy: today's kWh per room (from the energy API)
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, override
 
 from homeassistant.components.sensor import (
@@ -25,6 +32,7 @@ from homeassistant.const import (
     LIGHT_LUX,
     PERCENTAGE,
     REVOLUTIONS_PER_MINUTE,
+    UnitOfEnergy,
     UnitOfFrequency,
     UnitOfPower,
     UnitOfPressure,
@@ -38,6 +46,7 @@ from quilt_hp.models.controller import Controller
 from quilt_hp.models.indoor_unit import IndoorUnit
 from quilt_hp.models.outdoor_unit import OutdoorUnit
 from quilt_hp.models.qsm import QuiltSmartModule
+from quilt_hp.models.sensor import ControllerRemoteSensor, RemoteSensor
 from quilt_hp.models.space import Space
 from quilt_hp.models.system import SystemSnapshot
 
@@ -45,8 +54,10 @@ from .coordinator import QuiltCoordinator
 from .entity import (
     QuiltEntity,
     controller_device_info,
+    ctrl_remote_sensor_device_info,
     idu_device_info,
     odu_device_info,
+    remote_sensor_device_info,
 )
 from .utils import normalize_temperature as _normalize_temperature
 
@@ -111,6 +122,14 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         value_fn=lambda idu: idu.state.fan_speed_rpm,
     ),
     IDUSensorDescription(
+        key="fan_speed_setpoint_rpm",
+        name="Fan Speed Setpoint",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
+        value_fn=lambda idu: idu.state.fan_speed_setpoint_rpm,
+        entity_registry_enabled_default=False,
+    ),
+    IDUSensorDescription(
         key="inlet_temperature",
         name="Inlet Temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -159,6 +178,17 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         entity_registry_enabled_default=False,
     ),
     IDUSensorDescription(
+        key="led_power",
+        name="LED Power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        value_fn=lambda idu: (
+            idu.performance_metrics.led_power_w if idu.performance_metrics else None
+        ),
+        entity_registry_enabled_default=False,
+    ),
+    IDUSensorDescription(
         key="coefficient_of_performance",
         name="COP",
         state_class=SensorStateClass.MEASUREMENT,
@@ -177,6 +207,74 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda idu: _normalize_temperature(
             idu.state.calculated_ambient_temperature_c
+        ),
+        entity_registry_enabled_default=False,
+    ),
+    # Performance data sensors (detailed refrigerant / heat-exchanger telemetry)
+    IDUSensorDescription(
+        key="coil_temperature",
+        name="Coil Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda idu: (
+            _normalize_temperature(idu.performance_data.coil_temperature_c)
+            if idu.performance_data
+            else None
+        ),
+        entity_registry_enabled_default=False,
+    ),
+    IDUSensorDescription(
+        key="gas_pipe_temperature",
+        name="Gas Pipe Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda idu: (
+            _normalize_temperature(idu.performance_data.gas_pipe_temperature_c)
+            if idu.performance_data
+            else None
+        ),
+        entity_registry_enabled_default=False,
+    ),
+    IDUSensorDescription(
+        key="liquid_pipe_temperature",
+        name="Liquid Pipe Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda idu: (
+            _normalize_temperature(idu.performance_data.liquid_pipe_temperature_c)
+            if idu.performance_data
+            else None
+        ),
+        entity_registry_enabled_default=False,
+    ),
+    IDUSensorDescription(
+        key="inlet_humidity_perf",
+        name="Inlet Humidity (Perf)",
+        device_class=SensorDeviceClass.HUMIDITY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        value_fn=lambda idu: (
+            idu.performance_data.inlet_humidity_pct if idu.performance_data else None
+        ),
+        entity_registry_enabled_default=False,
+    ),
+    IDUSensorDescription(
+        key="module_power",
+        name="Module Power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        value_fn=lambda idu: (
+            round(
+                idu.performance_data.energy_measurement_j
+                / idu.performance_data.measurement_interval_s,
+                2,
+            )
+            if idu.performance_data and idu.performance_data.measurement_interval_s > 0
+            else None
         ),
         entity_registry_enabled_default=False,
     ),
@@ -243,6 +341,32 @@ ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
         ),
     ),
     ODUSensorDescription(
+        key="coil_temperature",
+        name="Coil Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda odu: (
+            _normalize_temperature(odu.performance_data.coil_temperature_c)
+            if odu.performance_data
+            else None
+        ),
+        entity_registry_enabled_default=False,
+    ),
+    ODUSensorDescription(
+        key="exhaust_temperature",
+        name="Exhaust Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda odu: (
+            _normalize_temperature(odu.performance_data.exhaust_temperature_c)
+            if odu.performance_data
+            else None
+        ),
+        entity_registry_enabled_default=False,
+    ),
+    ODUSensorDescription(
         key="compressor_frequency",
         name="Compressor Frequency",
         device_class=SensorDeviceClass.FREQUENCY,
@@ -299,12 +423,139 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         value_fn=lambda ctrl: _normalize_temperature(ctrl.ambient_temperature_c),
     ),
     ControllerSensorDescription(
+        key="pcb_temperature_a",
+        name="PCB Temperature A",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda ctrl: _normalize_temperature(ctrl.pcb_temperature_a_c),
+        entity_registry_enabled_default=False,
+    ),
+    ControllerSensorDescription(
+        key="pcb_temperature_b",
+        name="PCB Temperature B",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda ctrl: _normalize_temperature(ctrl.pcb_temperature_b_c),
+        entity_registry_enabled_default=False,
+    ),
+    ControllerSensorDescription(
+        key="calibrated_ambient_temperature",
+        name="Calibrated Ambient",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda ctrl: _normalize_temperature(ctrl.calibrated_ambient_c),
+        entity_registry_enabled_default=False,
+    ),
+    ControllerSensorDescription(
         key="wifi_signal",
         name="WiFi Signal",
         device_class=SensorDeviceClass.SIGNAL_STRENGTH,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="dBm",
         value_fn=lambda ctrl: ctrl.wifi_signal_dbm,
+        entity_registry_enabled_default=False,
+    ),
+    ControllerSensorDescription(
+        key="wifi_frequency",
+        name="WiFi Frequency",
+        device_class=SensorDeviceClass.FREQUENCY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfFrequency.MEGAHERTZ,
+        value_fn=lambda ctrl: ctrl.wifi_freq_mhz,
+        available_fn=lambda ctrl: ctrl.is_online and ctrl.wifi_freq_mhz is not None,
+        entity_registry_enabled_default=False,
+    ),
+)
+
+
+# ── RemoteSensor (IDU-paired wireless sensor) ─────────────────────────────────
+
+
+@dataclass(frozen=True, kw_only=True)
+class RemoteSensorDescription(SensorEntityDescription):
+    value_fn: Callable[[RemoteSensor], Any] = lambda _: None
+
+
+REMOTE_SENSOR_DESCRIPTIONS: tuple[RemoteSensorDescription, ...] = (
+    RemoteSensorDescription(
+        key="temperature",
+        name="Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda rs: _normalize_temperature(rs.ambient_temperature_c),
+    ),
+    RemoteSensorDescription(
+        key="humidity",
+        name="Humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        value_fn=lambda rs: rs.humidity_percent,
+    ),
+    RemoteSensorDescription(
+        key="battery",
+        name="Battery",
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        value_fn=lambda rs: rs.battery_level_percent,
+    ),
+    RemoteSensorDescription(
+        key="signal_strength",
+        name="Signal Strength",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="dBm",
+        value_fn=lambda rs: rs.signal_level_dbm,
+        entity_registry_enabled_default=False,
+    ),
+)
+
+
+# ── ControllerRemoteSensor (Dial-paired wireless sensor) ──────────────────────
+
+
+@dataclass(frozen=True, kw_only=True)
+class ControllerRemoteSensorDescription(SensorEntityDescription):
+    value_fn: Callable[[ControllerRemoteSensor], Any] = lambda _: None
+
+
+CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS: tuple[ControllerRemoteSensorDescription, ...] = (
+    ControllerRemoteSensorDescription(
+        key="temperature",
+        name="Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda crs: _normalize_temperature(crs.ambient_temperature_c),
+    ),
+    ControllerRemoteSensorDescription(
+        key="humidity",
+        name="Humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        value_fn=lambda crs: crs.humidity_percent,
+    ),
+    ControllerRemoteSensorDescription(
+        key="battery",
+        name="Battery",
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        value_fn=lambda crs: crs.battery_level_percent,
+    ),
+    ControllerRemoteSensorDescription(
+        key="signal_strength",
+        name="Signal Strength",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="dBm",
+        value_fn=lambda crs: crs.signal_level_dbm,
         entity_registry_enabled_default=False,
     ),
 )
@@ -331,7 +582,7 @@ async def async_setup_entry(
         if idu.space_id and idu.space_id not in first_idu_for_space:
             first_idu_for_space[idu.space_id] = idu.id
 
-    # Space temperature sensors — attached to the first QSM in each space
+    # Space temperature sensors — attached to the first IDU in each space
     for space in snapshot.spaces:
         if not space.is_room:
             continue
@@ -340,6 +591,15 @@ async def async_setup_entry(
             continue
         for space_desc in SPACE_SENSOR_DESCRIPTIONS:
             entities.append(QuiltSpaceSensor(coordinator, space.id, idu_id, space_desc))
+
+    # Energy sensors — one per room space, on the IDU device
+    for space in snapshot.spaces:
+        if not space.is_room:
+            continue
+        idu_id = first_idu_for_space.get(space.id)
+        if idu_id is None:
+            continue
+        entities.append(QuiltEnergySensor(coordinator, space.id, idu_id))
 
     # QSM/IDU sensors
     for idu in snapshot.indoor_units:
@@ -369,6 +629,16 @@ async def async_setup_entry(
         for ctrl_desc in CONTROLLER_SENSOR_DESCRIPTIONS:
             entities.append(QuiltControllerSensor(coordinator, ctrl.id, ctrl_desc))
 
+    # RemoteSensor sensors (IDU-paired wireless sensors)
+    for rs in snapshot.remote_sensors:
+        for rs_desc in REMOTE_SENSOR_DESCRIPTIONS:
+            entities.append(QuiltRemoteSensor(coordinator, rs.id, rs_desc))
+
+    # ControllerRemoteSensor sensors (Dial-paired wireless sensors)
+    for crs in snapshot.controller_remote_sensors:
+        for crs_desc in CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS:
+            entities.append(QuiltControllerRemoteSensor(coordinator, crs.id, crs_desc))
+
     async_add_entities(entities)
 
 
@@ -376,7 +646,7 @@ async def async_setup_entry(
 
 
 class QuiltSpaceSensor(QuiltEntity, SensorEntity):
-    """Space temperature sensor, presented on the first QSM in the space."""
+    """Space temperature sensor, presented on the first IDU in the space."""
 
     entity_description: SpaceSensorDescription
 
@@ -580,3 +850,111 @@ class QuiltQSMSensor(QuiltEntity, SensorEntity):
     def native_value(self) -> Any:
         qsm = self._qsm
         return self.entity_description.value_fn(qsm) if qsm else None
+
+
+class QuiltRemoteSensor(QuiltEntity, SensorEntity):
+    """Sensor entity for a Quilt remote sensor (IDU-paired wireless sensor)."""
+
+    entity_description: RemoteSensorDescription
+
+    def __init__(
+        self,
+        coordinator: QuiltCoordinator,
+        rs_id: str,
+        description: RemoteSensorDescription,
+    ) -> None:
+        """Initialize the remote sensor entity."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._rs_id: str = rs_id
+        self._attr_unique_id: str = f"quilt_rs_{rs_id}_{description.key}"
+
+    @property
+    def _rs(self) -> RemoteSensor:
+        return self.coordinator.remote_sensor_by_id[self._rs_id]
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        rs = self._rs
+        idu = self.coordinator.idu_by_id.get(rs.indoor_unit_id)
+        return remote_sensor_device_info(rs, idu)
+
+    @property
+    @override
+    def native_value(self) -> Any:
+        return self.entity_description.value_fn(self._rs)
+
+
+class QuiltControllerRemoteSensor(QuiltEntity, SensorEntity):
+    """Sensor entity for a Quilt controller remote sensor (Dial-paired)."""
+
+    entity_description: ControllerRemoteSensorDescription
+
+    def __init__(
+        self,
+        coordinator: QuiltCoordinator,
+        crs_id: str,
+        description: ControllerRemoteSensorDescription,
+    ) -> None:
+        """Initialize the controller remote sensor entity."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._crs_id: str = crs_id
+        self._attr_unique_id: str = f"quilt_crs_{crs_id}_{description.key}"
+
+    @property
+    def _crs(self) -> ControllerRemoteSensor:
+        return self.coordinator.ctrl_remote_sensor_by_id[self._crs_id]
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        crs = self._crs
+        ctrl = self.coordinator.ctrl_by_id.get(crs.controller_id)
+        return ctrl_remote_sensor_device_info(crs, ctrl)
+
+    @property
+    @override
+    def native_value(self) -> Any:
+        return self.entity_description.value_fn(self._crs)
+
+
+class QuiltEnergySensor(QuiltEntity, SensorEntity):
+    """Today's energy consumption for a Quilt space (room)."""
+
+    _attr_device_class: SensorDeviceClass = SensorDeviceClass.ENERGY
+    _attr_state_class: SensorStateClass = SensorStateClass.TOTAL
+    _attr_native_unit_of_measurement: str = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_name: str | None = "Energy Today"
+    _attr_suggested_display_precision: int = 3
+
+    def __init__(
+        self,
+        coordinator: QuiltCoordinator,
+        space_id: str,
+        idu_id: str,
+    ) -> None:
+        """Initialize the energy sensor entity."""
+        super().__init__(coordinator)
+        self._space_id: str = space_id
+        self._idu_id: str = idu_id
+        self._attr_unique_id: str = f"quilt_space_{space_id}_energy_today"
+
+    @property
+    @override
+    def device_info(self) -> DeviceInfo:
+        idu = self.coordinator.idu_by_id[self._idu_id]
+        space = self.coordinator.spaces_by_id.get(self._space_id)
+        return idu_device_info(idu, space)
+
+    @property
+    @override
+    def native_value(self) -> float | None:
+        total = self.coordinator.energy_by_space_id.get(self._space_id)
+        return round(total, 4) if total is not None else None
+
+    @property
+    @override
+    def last_reset(self) -> datetime | None:
+        return self.coordinator.energy_last_reset

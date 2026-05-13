@@ -8,7 +8,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from quilt_hp.models.controller import Controller
 from quilt_hp.models.indoor_unit import IndoorUnit
 from quilt_hp.models.outdoor_unit import OutdoorUnit
+from quilt_hp.models.sensor import ControllerRemoteSensor, RemoteSensor
 from quilt_hp.models.space import Space
+from quilt_hp.models.system import Location
 
 from .const import DOMAIN
 from .coordinator import QuiltCoordinator
@@ -106,3 +108,43 @@ def controller_device_info(
     if idu is not None:
         info["via_device"] = (DOMAIN, f"i_{idu.id}")
     return info
+
+
+def remote_sensor_device_info(
+    rs: RemoteSensor, idu: IndoorUnit | None = None
+) -> DeviceInfo:
+    """Build a ``DeviceInfo`` for a Quilt remote sensor (IDU-paired wireless sensor)."""
+    info = DeviceInfo(
+        identifiers={(DOMAIN, f"rs_{rs.id}")},
+        name="Remote Sensor",
+        manufacturer=_MANUFACTURER,
+        model="Remote Sensor",
+    )
+    if idu is not None:
+        info["via_device"] = (DOMAIN, f"i_{idu.id}")
+    return info
+
+
+def ctrl_remote_sensor_device_info(
+    crs: ControllerRemoteSensor, ctrl: Controller | None = None
+) -> DeviceInfo:
+    """Build a ``DeviceInfo`` for a Quilt controller remote sensor (Dial-paired)."""
+    info = DeviceInfo(
+        identifiers={(DOMAIN, f"crs_{crs.id}")},
+        name="Zone Sensor",
+        manufacturer=_MANUFACTURER,
+        model="Zone Sensor",
+    )
+    if ctrl is not None:
+        info["via_device"] = (DOMAIN, f"c_{ctrl.id}")
+    return info
+
+
+def location_device_info(location: Location) -> DeviceInfo:
+    """Build a ``DeviceInfo`` for a Quilt location (home/system)."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"loc_{location.id}")},
+        name=location.name or "Quilt Home",
+        manufacturer=_MANUFACTURER,
+        model="Quilt System",
+    )

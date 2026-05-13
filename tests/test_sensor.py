@@ -2,24 +2,35 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import math
 
 import pytest
 
 from custom_components.quilt_hp.sensor import (
+    CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS,
+    CONTROLLER_SENSOR_DESCRIPTIONS,
     IDU_SENSOR_DESCRIPTIONS,
     ODU_SENSOR_DESCRIPTIONS,
+    REMOTE_SENSOR_DESCRIPTIONS,
     SPACE_SENSOR_DESCRIPTIONS,
+    QuiltControllerRemoteSensor,
+    QuiltControllerSensor,
+    QuiltEnergySensor,
     QuiltIDUSensor,
     QuiltODUSensor,
+    QuiltRemoteSensor,
     QuiltSpaceSensor,
     async_setup_entry,
 )
 
 from .conftest import (
+    make_controller,
+    make_ctrl_remote_sensor,
     make_idu,
     make_mock_coordinator,
     make_odu,
+    make_remote_sensor,
     make_snapshot,
     make_space,
 )
@@ -31,6 +42,18 @@ def coordinator(hass):
     idu = make_idu()
     odu = make_odu()
     snapshot = make_snapshot(spaces=[space], indoor_units=[idu], outdoor_units=[odu])
+    return make_mock_coordinator(hass, snapshot)
+
+
+@pytest.fixture
+def coordinator_with_ctrl(hass):
+    space = make_space()
+    idu = make_idu()
+    odu = make_odu()
+    ctrl = make_controller()
+    snapshot = make_snapshot(
+        spaces=[space], indoor_units=[idu], outdoor_units=[odu], controllers=[ctrl]
+    )
     return make_mock_coordinator(hass, snapshot)
 
 
@@ -67,6 +90,71 @@ def test_idu_fan_rpm(coordinator) -> None:
     assert entity.native_value == 800.0
 
 
+def test_idu_fan_speed_setpoint_rpm(coordinator) -> None:
+    desc = next(d for d in IDU_SENSOR_DESCRIPTIONS if d.key == "fan_speed_setpoint_rpm")
+    entity = QuiltIDUSensor(coordinator, "idu-001", desc)
+    assert entity.native_value == 820.0
+
+
+def test_idu_coil_temperature_none_when_no_perf_data(coordinator) -> None:
+    desc = next(d for d in IDU_SENSOR_DESCRIPTIONS if d.key == "coil_temperature")
+    entity = QuiltIDUSensor(coordinator, "idu-001", desc)
+    # make_idu sets performance_data=None
+    assert entity.native_value is None
+
+
+def test_idu_coil_temperature_with_perf_data(hass) -> None:
+    from quilt_hp.models.indoor_unit import IndoorUnitPerformanceData
+
+    idu = make_idu()
+    idu.performance_data = IndoorUnitPerformanceData(  # type: ignore[misc]
+        measurement_interval_s=10.0,
+        energy_measurement_j=500.0,
+        hvac_mode=idu.state.hvac_mode,
+        hvac_state=idu.state.hvac_state,
+        actual_fan_speed_rpm=800.0,
+        outlet_temperature_c=30.0,
+        inlet_temperature_c=20.0,
+        inlet_humidity_pct=45.0,
+        coil_temperature_c=12.5,
+        gas_pipe_temperature_c=8.0,
+        liquid_pipe_temperature_c=35.0,
+    )
+    coordinator = make_mock_coordinator(hass, make_snapshot(indoor_units=[idu]))
+    desc = next(d for d in IDU_SENSOR_DESCRIPTIONS if d.key == "coil_temperature")
+    entity = QuiltIDUSensor(coordinator, "idu-001", desc)
+    assert entity.native_value == 12.5
+
+
+def test_idu_module_power(hass) -> None:
+    from quilt_hp.models.indoor_unit import IndoorUnitPerformanceData
+
+    idu = make_idu()
+    idu.performance_data = IndoorUnitPerformanceData(  # type: ignore[misc]
+        measurement_interval_s=10.0,
+        energy_measurement_j=500.0,
+        hvac_mode=idu.state.hvac_mode,
+        hvac_state=idu.state.hvac_state,
+        actual_fan_speed_rpm=800.0,
+        outlet_temperature_c=30.0,
+        inlet_temperature_c=20.0,
+        inlet_humidity_pct=45.0,
+        coil_temperature_c=12.5,
+        gas_pipe_temperature_c=8.0,
+        liquid_pipe_temperature_c=35.0,
+    )
+    coordinator = make_mock_coordinator(hass, make_snapshot(indoor_units=[idu]))
+    desc = next(d for d in IDU_SENSOR_DESCRIPTIONS if d.key == "module_power")
+    entity = QuiltIDUSensor(coordinator, "idu-001", desc)
+    assert entity.native_value == 50.0  # 500J / 10s
+
+
+def test_idu_led_power_none_when_no_metrics(coordinator) -> None:
+    desc = next(d for d in IDU_SENSOR_DESCRIPTIONS if d.key == "led_power")
+    entity = QuiltIDUSensor(coordinator, "idu-001", desc)
+    assert entity.native_value is None
+
+
 def test_odu_ambient_temperature(coordinator) -> None:
     desc = next(d for d in ODU_SENSOR_DESCRIPTIONS if d.key == "ambient_temperature")
     entity = QuiltODUSensor(coordinator, "odu-001", "idu-001", desc)
@@ -77,6 +165,134 @@ def test_odu_compressor_frequency(coordinator) -> None:
     desc = next(d for d in ODU_SENSOR_DESCRIPTIONS if d.key == "compressor_frequency")
     entity = QuiltODUSensor(coordinator, "odu-001", "idu-001", desc)
     assert entity.native_value == 55.0
+
+
+def test_odu_coil_temperature(coordinator) -> None:
+    desc = next(d for d in ODU_SENSOR_DESCRIPTIONS if d.key == "coil_temperature")
+    entity = QuiltODUSensor(coordinator, "odu-001", "idu-001", desc)
+    assert entity.native_value == 10.0
+
+
+def test_odu_exhaust_temperature(coordinator) -> None:
+    desc = next(d for d in ODU_SENSOR_DESCRIPTIONS if d.key == "exhaust_temperature")
+    entity = QuiltODUSensor(coordinator, "odu-001", "idu-001", desc)
+    assert entity.native_value == 35.0
+
+
+def test_controller_ambient_temperature(coordinator_with_ctrl) -> None:
+    desc = next(
+        d for d in CONTROLLER_SENSOR_DESCRIPTIONS if d.key == "ambient_temperature"
+    )
+    entity = QuiltControllerSensor(coordinator_with_ctrl, "ctrl-001", desc)
+    # ambient_temperature_c is a @property on Controller derived from raw_thermistor_c
+    assert entity.native_value is not None
+
+
+def test_controller_pcb_temperature_a(coordinator_with_ctrl) -> None:
+    desc = next(
+        d for d in CONTROLLER_SENSOR_DESCRIPTIONS if d.key == "pcb_temperature_a"
+    )
+    entity = QuiltControllerSensor(coordinator_with_ctrl, "ctrl-001", desc)
+    assert entity.native_value == 35.0
+
+
+def test_controller_pcb_temperature_b(coordinator_with_ctrl) -> None:
+    desc = next(
+        d for d in CONTROLLER_SENSOR_DESCRIPTIONS if d.key == "pcb_temperature_b"
+    )
+    entity = QuiltControllerSensor(coordinator_with_ctrl, "ctrl-001", desc)
+    assert entity.native_value == 47.0
+
+
+def test_controller_calibrated_ambient(coordinator_with_ctrl) -> None:
+    desc = next(
+        d
+        for d in CONTROLLER_SENSOR_DESCRIPTIONS
+        if d.key == "calibrated_ambient_temperature"
+    )
+    entity = QuiltControllerSensor(coordinator_with_ctrl, "ctrl-001", desc)
+    assert entity.native_value == 22.0
+
+
+def test_controller_wifi_signal(coordinator_with_ctrl) -> None:
+    desc = next(d for d in CONTROLLER_SENSOR_DESCRIPTIONS if d.key == "wifi_signal")
+    entity = QuiltControllerSensor(coordinator_with_ctrl, "ctrl-001", desc)
+    assert entity.native_value == -55
+
+
+def test_controller_wifi_frequency(coordinator_with_ctrl) -> None:
+    desc = next(d for d in CONTROLLER_SENSOR_DESCRIPTIONS if d.key == "wifi_frequency")
+    entity = QuiltControllerSensor(coordinator_with_ctrl, "ctrl-001", desc)
+    assert entity.native_value == 5745
+
+
+def test_remote_sensor_temperature(hass) -> None:
+    rs = make_remote_sensor()
+    snapshot = make_snapshot(remote_sensors=[rs])
+    coordinator = make_mock_coordinator(hass, snapshot)
+    desc = next(d for d in REMOTE_SENSOR_DESCRIPTIONS if d.key == "temperature")
+    entity = QuiltRemoteSensor(coordinator, "rs-001", desc)
+    assert entity.native_value == 20.5
+
+
+def test_remote_sensor_humidity(hass) -> None:
+    rs = make_remote_sensor()
+    snapshot = make_snapshot(remote_sensors=[rs])
+    coordinator = make_mock_coordinator(hass, snapshot)
+    desc = next(d for d in REMOTE_SENSOR_DESCRIPTIONS if d.key == "humidity")
+    entity = QuiltRemoteSensor(coordinator, "rs-001", desc)
+    assert entity.native_value == 48.0
+
+
+def test_remote_sensor_battery(hass) -> None:
+    rs = make_remote_sensor()
+    snapshot = make_snapshot(remote_sensors=[rs])
+    coordinator = make_mock_coordinator(hass, snapshot)
+    desc = next(d for d in REMOTE_SENSOR_DESCRIPTIONS if d.key == "battery")
+    entity = QuiltRemoteSensor(coordinator, "rs-001", desc)
+    assert entity.native_value == 85.0
+
+
+def test_ctrl_remote_sensor_temperature(hass) -> None:
+    crs = make_ctrl_remote_sensor()
+    snapshot = make_snapshot(controller_remote_sensors=[crs])
+    coordinator = make_mock_coordinator(hass, snapshot)
+    desc = next(
+        d for d in CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS if d.key == "temperature"
+    )
+    entity = QuiltControllerRemoteSensor(coordinator, "crs-001", desc)
+    assert entity.native_value == 21.0
+
+
+def test_ctrl_remote_sensor_battery(hass) -> None:
+    crs = make_ctrl_remote_sensor()
+    snapshot = make_snapshot(controller_remote_sensors=[crs])
+    coordinator = make_mock_coordinator(hass, snapshot)
+    desc = next(d for d in CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS if d.key == "battery")
+    entity = QuiltControllerRemoteSensor(coordinator, "crs-001", desc)
+    assert entity.native_value == 90.0
+
+
+def test_energy_sensor_returns_none_before_first_fetch(coordinator) -> None:
+    entity = QuiltEnergySensor(coordinator, "space-001", "idu-001")
+    assert entity.native_value is None
+    assert entity.last_reset is None
+
+
+def test_energy_sensor_returns_value_after_fetch(hass) -> None:
+    coordinator = make_mock_coordinator(hass)
+    coordinator.energy_by_space_id = {"space-001": 3.14159}
+    coordinator.energy_last_reset = datetime(2026, 5, 12, 0, 0, 0, tzinfo=UTC)
+    entity = QuiltEnergySensor(coordinator, "space-001", "idu-001")
+    assert entity.native_value == 3.1416
+    assert entity.last_reset == datetime(2026, 5, 12, 0, 0, 0, tzinfo=UTC)
+
+
+def test_energy_sensor_missing_space_returns_none(hass) -> None:
+    coordinator = make_mock_coordinator(hass)
+    coordinator.energy_by_space_id = {"other-space": 1.0}
+    entity = QuiltEnergySensor(coordinator, "space-001", "idu-001")
+    assert entity.native_value is None
 
 
 def test_idu_unavailable_when_offline(hass) -> None:

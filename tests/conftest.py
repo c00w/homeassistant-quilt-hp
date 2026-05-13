@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.core import HomeAssistant
+from quilt_hp.models.controller import Controller
 from quilt_hp.models.enums import (
     FanSpeed,
     HVACMode,
@@ -14,6 +15,7 @@ from quilt_hp.models.enums import (
     LightState,
     LouverMode,
     OccupancyMode,
+    RemoteSensorControlMode,
     SafetyHeatingMode,
 )
 from quilt_hp.models.indoor_unit import (
@@ -23,7 +25,9 @@ from quilt_hp.models.indoor_unit import (
     IndoorUnitState,
 )
 from quilt_hp.models.outdoor_unit import OutdoorUnit, OutdoorUnitPerformanceData
+from quilt_hp.models.sensor import ControllerRemoteSensor, RemoteSensor
 from quilt_hp.models.space import Space, SpaceControls, SpaceSettings, SpaceState
+from quilt_hp.models.system import Location
 
 # ── Model helpers ─────────────────────────────────────────────────────────────
 
@@ -153,20 +157,105 @@ def make_odu(
     )
 
 
+def make_controller(
+    ctrl_id: str = "ctrl-001",
+    system_id: str = "sys-001",
+    space_id: str = "space-001",
+    online: bool = True,
+) -> Controller:
+    return Controller(
+        id=ctrl_id,
+        system_id=system_id,
+        space_id=space_id,
+        name="Quilt Dial",
+        raw_thermistor_c=21.5,
+        pcb_temperature_a_c=35.0,
+        pcb_temperature_b_c=47.0,
+        calibrated_ambient_c=22.0,
+        wifi_ssid="HomeNetwork",
+        wifi_ip="192.168.1.100",
+        wifi_signal_dbm=-55,
+        wifi_freq_mhz=5745,
+        state_updated_at=datetime.now(tz=UTC) if online else None,
+    )
+
+
+def make_remote_sensor(
+    rs_id: str = "rs-001",
+    indoor_unit_id: str = "idu-001",
+) -> RemoteSensor:
+    return RemoteSensor(
+        id=rs_id,
+        indoor_unit_id=indoor_unit_id,
+        mac="AA:BB:CC:DD:EE:FF",
+        ambient_temperature_c=20.5,
+        humidity_percent=48.0,
+        battery_level_percent=85.0,
+        signal_level_dbm=-65,
+        control_mode=RemoteSensorControlMode.ENABLED,
+    )
+
+
+def make_ctrl_remote_sensor(
+    crs_id: str = "crs-001",
+    controller_id: str = "ctrl-001",
+) -> ControllerRemoteSensor:
+    return ControllerRemoteSensor(
+        id=crs_id,
+        controller_id=controller_id,
+        mac="BB:CC:DD:EE:FF:AA",
+        ambient_temperature_c=21.0,
+        humidity_percent=50.0,
+        battery_level_percent=90.0,
+        signal_level_dbm=-60,
+        control_mode=RemoteSensorControlMode.ENABLED,
+    )
+
+
+def make_location(
+    location_id: str = "loc-001",
+    name: str = "My Home",
+    system_id: str = "sys-001",
+    schedule_paused: bool = False,
+) -> Location:
+    return Location(
+        id=location_id,
+        name=name,
+        system_id=system_id,
+        timezone="America/Los_Angeles",
+        schedule_paused=schedule_paused,
+    )
+
+
 def make_snapshot(
     spaces=None,
     indoor_units=None,
     outdoor_units=None,
+    controllers=None,
+    remote_sensors=None,
+    controller_remote_sensors=None,
+    locations=None,
 ) -> MagicMock:
     """Build a minimal SystemSnapshot mock."""
     snapshot = MagicMock()
     snapshot.spaces = spaces or [make_space()]
     snapshot.indoor_units = indoor_units or [make_idu()]
     snapshot.outdoor_units = outdoor_units or [make_odu()]
+    snapshot.controllers = controllers or []
+    snapshot.quilt_smart_modules = []
+    snapshot.comfort_settings = []
+    snapshot.schedule_weeks = []
+    snapshot.schedule_days = []
+    snapshot.remote_sensors = remote_sensors or []
+    snapshot.controller_remote_sensors = controller_remote_sensors or []
+    snapshot.software_update_infos = []
+    snapshot.locations = locations or [make_location()]
     snapshot.stream_topics.return_value = ["topic-1"]
     snapshot.apply_space.side_effect = lambda s: s
     snapshot.apply_indoor_unit.side_effect = lambda u: u
     snapshot.apply_outdoor_unit.side_effect = lambda u: u
+    snapshot.apply_remote_sensor.side_effect = lambda r: r
+    snapshot.apply_controller_remote_sensor.side_effect = lambda r: r
     return snapshot
 
 
@@ -183,10 +272,23 @@ def make_mock_coordinator(hass: HomeAssistant, snapshot=None) -> MagicMock:
     coordinator.data = data
     coordinator.spaces_by_id = {s.id: s for s in data.spaces}
     coordinator.idu_by_id = {u.id: u for u in data.indoor_units}
+    coordinator.idu_by_space_id = {
+        u.space_id: u for u in data.indoor_units if u.space_id
+    }
     coordinator.odu_by_id = {u.id: u for u in data.outdoor_units}
+    coordinator.ctrl_by_id = {c.id: c for c in data.controllers}
+    coordinator.qsm_by_id = {}
+    coordinator.remote_sensor_by_id = {r.id: r for r in data.remote_sensors}
+    coordinator.ctrl_remote_sensor_by_id = {
+        r.id: r for r in data.controller_remote_sensors
+    }
+    coordinator.location_by_id = {loc.id: loc for loc in data.locations}
+    coordinator.energy_by_space_id = {}
+    coordinator.energy_last_reset = None
     coordinator.last_update_success = True
     coordinator.client = MagicMock()
     coordinator.async_set_space = AsyncMock()
     coordinator.async_set_indoor_unit = AsyncMock()
+    coordinator.async_set_schedule_execution = AsyncMock()
     coordinator.async_request_refresh = AsyncMock()
     return coordinator
