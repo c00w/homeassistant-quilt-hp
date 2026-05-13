@@ -4,6 +4,26 @@
 
 Do not add `Co-authored-by` trailers or any other Copilot attribution to commit messages.
 
+## Versioning and Changelog
+
+This project follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html):
+- **PATCH** (`0.2.x`): backwards-compatible bug fixes
+- **MINOR** (`0.x.0`): backwards-compatible new features
+- **MAJOR** (`x.0.0`): incompatible API or breaking changes
+
+All notable changes must be documented in [`CHANGELOG.md`](../CHANGELOG.md) following the
+[Keep a Changelog 1.0.0](https://keepachangelog.com/en/1.0.0/) format:
+- Add new entries under `## [Unreleased]` as you work
+- On release: rename `[Unreleased]` to `[x.y.z] - YYYY-MM-DD`, add a new empty `[Unreleased]` section, and update the comparison links at the bottom
+- Use the standard change categories: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`
+
+**Release process:**
+1. Update `manifest.json` `version` field
+2. Update `CHANGELOG.md` (move Unreleased → versioned section, add date, update links)
+3. Commit: `git commit -m "chore: release vX.Y.Z"`
+4. Tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
+5. The `release.yml` GitHub Action automatically creates the GitHub release from the tag and CHANGELOG entry
+
 ## Local Home Assistant Container
 
 A `docker-compose.yml` is included for running a real HA instance locally for diagnosis and
