@@ -37,11 +37,13 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: |
+          python -m venv .venv314
+          .venv314/bin/pip install -r requirements-dev.txt
       - name: Run Mypy
-        run: mypy custom_components/quilt_hp
+        run: .venv314/bin/mypy custom_components/quilt_hp
       - name: Run Basedpyright
-        run: basedpyright custom_components/quilt_hp
+        run: .venv314/bin/basedpyright custom_components/quilt_hp
 
   tests:
     name: Run Tests
