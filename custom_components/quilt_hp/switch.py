@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from quilt_hp.models.system import Location, SystemSnapshot
+from quilt_hp.models.system import Location
 
 from .coordinator import QuiltCoordinator
 from .entity import QuiltEntity, location_device_info
@@ -23,15 +23,13 @@ if TYPE_CHECKING:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    _hass: HomeAssistant,
     entry: QuiltConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up switch entities from a config entry."""
     coordinator = entry.runtime_data
-    snapshot: SystemSnapshot | None = coordinator.data
-    if snapshot is None:
-        return
+    snapshot = coordinator.data
 
     entities: list[SwitchEntity] = [
         QuiltScheduleSwitch(coordinator, loc.id) for loc in snapshot.locations

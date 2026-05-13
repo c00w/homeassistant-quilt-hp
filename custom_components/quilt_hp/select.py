@@ -11,7 +11,6 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from quilt_hp.models.enums import LouverAngle, LouverMode
 from quilt_hp.models.indoor_unit import IndoorUnit
-from quilt_hp.models.system import SystemSnapshot
 
 from .coordinator import QuiltCoordinator
 
@@ -54,15 +53,13 @@ _LOUVER_ANGLE_TO_STR: dict[LouverAngle, str] = {
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    _hass: HomeAssistant,
     entry: QuiltConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up select entities from a config entry."""
     coordinator = entry.runtime_data
-    snapshot: SystemSnapshot | None = coordinator.data
-    if snapshot is None:
-        return
+    snapshot = coordinator.data
 
     entities: list[SelectEntity] = []
     for idu in snapshot.indoor_units:

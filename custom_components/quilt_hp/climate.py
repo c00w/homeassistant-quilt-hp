@@ -21,7 +21,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from quilt_hp.models.enums import HVACMode as QHVACMode, HVACState as QHVACState
 from quilt_hp.models.space import Space
-from quilt_hp.models.system import ComfortSetting, SystemSnapshot
+from quilt_hp.models.system import ComfortSetting
 
 from .coordinator import QuiltCoordinator
 
@@ -67,15 +67,13 @@ _Q_STATE_TO_HA_ACTION: dict[QHVACState, HVACAction] = {
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    _hass: HomeAssistant,
     entry: QuiltConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up climate entities from a config entry."""
     coordinator = entry.runtime_data
-    snapshot: SystemSnapshot | None = coordinator.data
-    if snapshot is None:
-        return
+    snapshot = coordinator.data
 
     first_idu_for_space: dict[str, str] = {}
     for idu in snapshot.indoor_units:

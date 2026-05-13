@@ -23,7 +23,7 @@ _LOGGER = logging.getLogger(__name__)
 type QuiltConfigEntry = ConfigEntry[QuiltCoordinator]
 
 
-async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_migrate_entry(_hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate config entries to the current version.
 
     V1 is the only version that has ever existed. This stub is here so that

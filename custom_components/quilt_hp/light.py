@@ -18,7 +18,6 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from quilt_hp.models.enums import LedAnimation
 from quilt_hp.models.indoor_unit import IndoorUnit
-from quilt_hp.models.system import SystemSnapshot
 
 from .coordinator import QuiltCoordinator
 
@@ -55,15 +54,13 @@ _ANIMATION_TO_EFFECT: dict[LedAnimation, str] = {
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    _hass: HomeAssistant,
     entry: QuiltConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up light entities from a config entry."""
     coordinator = entry.runtime_data
-    snapshot: SystemSnapshot | None = coordinator.data
-    if snapshot is None:
-        return
+    snapshot = coordinator.data
 
     entities = [QuiltLightEntity(coordinator, idu.id) for idu in snapshot.indoor_units]
     async_add_entities(entities)

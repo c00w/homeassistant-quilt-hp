@@ -11,7 +11,6 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from quilt_hp.models.enums import FanSpeed
 from quilt_hp.models.indoor_unit import IndoorUnit
-from quilt_hp.models.system import SystemSnapshot
 
 from .coordinator import QuiltCoordinator
 
@@ -61,15 +60,13 @@ def _pct_to_fan_speed(pct: int) -> FanSpeed:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    _hass: HomeAssistant,
     entry: QuiltConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up fan entities from a config entry."""
     coordinator = entry.runtime_data
-    snapshot: SystemSnapshot | None = coordinator.data
-    if snapshot is None:
-        return
+    snapshot = coordinator.data
 
     entities = [QuiltFanEntity(coordinator, idu.id) for idu in snapshot.indoor_units]
     async_add_entities(entities)

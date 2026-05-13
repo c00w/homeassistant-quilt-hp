@@ -23,7 +23,6 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from quilt_hp.models.controller import Controller
 from quilt_hp.models.enums import OccupancyState, Presence
 from quilt_hp.models.indoor_unit import IndoorUnit
-from quilt_hp.models.system import SystemSnapshot
 
 from .coordinator import QuiltCoordinator
 
@@ -106,15 +105,13 @@ CONTROLLER_BINARY_SENSOR_DESCRIPTIONS: tuple[ControllerBinarySensorDescription, 
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    _hass: HomeAssistant,
     entry: QuiltConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up binary sensor entities from a config entry."""
     coordinator = entry.runtime_data
-    snapshot: SystemSnapshot | None = coordinator.data
-    if snapshot is None:
-        return
+    snapshot = coordinator.data
     entities: list[BinarySensorEntity] = []
 
     for idu in snapshot.indoor_units:

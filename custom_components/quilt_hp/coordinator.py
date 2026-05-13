@@ -145,6 +145,11 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         return self._client
 
     @property
+    def stream_error_count(self) -> int:
+        """Return the number of consecutive stream errors since last reconnect."""
+        return self._stream_error_count
+
+    @property
     def is_streaming(self) -> bool:
         """Return True when the gRPC stream is active.
 

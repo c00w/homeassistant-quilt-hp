@@ -48,7 +48,6 @@ from quilt_hp.models.outdoor_unit import OutdoorUnit
 from quilt_hp.models.qsm import QuiltSmartModule
 from quilt_hp.models.sensor import ControllerRemoteSensor, RemoteSensor
 from quilt_hp.models.space import Space
-from quilt_hp.models.system import SystemSnapshot
 
 from .coordinator import QuiltCoordinator
 from .entity import (
@@ -565,15 +564,13 @@ CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS: tuple[ControllerRemoteSensorDescription, 
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    _hass: HomeAssistant,
     entry: QuiltConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up sensor entities from a config entry."""
     coordinator = entry.runtime_data
-    snapshot: SystemSnapshot | None = coordinator.data
-    if snapshot is None:
-        return
+    snapshot = coordinator.data
     entities: list[SensorEntity] = []
 
     # Index the first IDU per space so space-level sensors have a device to live on.
