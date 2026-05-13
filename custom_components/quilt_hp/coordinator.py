@@ -162,7 +162,9 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
     async def _async_update_data(self) -> SystemSnapshot:
         try:
             self._client.invalidate_snapshot()
-            return await self._client.get_snapshot(system_id=self._system_id)
+            return await self._client.get_snapshot(  # type: ignore[no-any-return]
+                system_id=self._system_id
+            )
         except Exception as err:
             raise UpdateFailed(f"Error fetching Quilt snapshot: {err}") from err
 

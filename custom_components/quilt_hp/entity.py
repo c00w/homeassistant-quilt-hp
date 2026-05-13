@@ -19,6 +19,15 @@ from .coordinator import QuiltCoordinator
 _LOGGER = logging.getLogger(__name__)
 _MANUFACTURER: str = "Quilt"
 
+_SENTINEL_VALUES: frozenset[str] = frozenset({"N/A", "n/a", "NA", ""})
+
+
+def _clean(value: str | None) -> str | None:
+    """Return None for missing/sentinel strings the API may return."""
+    if value is None or value in _SENTINEL_VALUES:
+        return None
+    return value
+
 
 class QuiltEntity(CoordinatorEntity[QuiltCoordinator]):
     """Common properties for all Quilt entities."""
@@ -51,7 +60,7 @@ def idu_device_info(idu: IndoorUnit, space: Space | None = None) -> DeviceInfo:
 
 def odu_device_info(odu: OutdoorUnit, idu: IndoorUnit | None = None) -> DeviceInfo:
     """Build a ``DeviceInfo`` for an outdoor unit.
-    
+
     The ODU is linked to the IDU in the same space so HA groups them
     correctly in the UI.
     """
@@ -59,17 +68,21 @@ def odu_device_info(odu: OutdoorUnit, idu: IndoorUnit | None = None) -> DeviceIn
         "identifiers": {(DOMAIN, f"u_{odu.id}")},
         "name": f"Outdoor Unit {odu.id[:8]}",
         "manufacturer": _MANUFACTURER,
-        "model": "Outdoor Unit",
-        "serial_number": odu.serial_number,
-        "sw_version": odu.firmware_version,
+        "model": _clean(odu.model_sku) or "Outdoor Unit",
     }
+    if _clean(odu.serial_number):
+        info["serial_number"] = odu.serial_number
+    if _clean(odu.firmware_version):
+        info["sw_version"] = odu.firmware_version
     if idu is not None:
         info["via_device"] = (DOMAIN, f"i_{idu.id}")
 
     return cast(DeviceInfo, cast(object, info))
 
 
-def controller_device_info(ctrl: Controller, idu: IndoorUnit | None = None) -> DeviceInfo:
+def controller_device_info(
+    ctrl: Controller, idu: IndoorUnit | None = None
+) -> DeviceInfo:
     """Build a ``DeviceInfo`` for a Quilt Controller (Dial).
 
     The Dial is a physically separate device from the IDU. ``via_device`` links
@@ -79,10 +92,12 @@ def controller_device_info(ctrl: Controller, idu: IndoorUnit | None = None) -> D
         "identifiers": {(DOMAIN, f"c_{ctrl.id}")},
         "name": ctrl.name or "Quilt Dial",
         "manufacturer": _MANUFACTURER,
-        "model": "Dial",
-        "serial_number": ctrl.serial_number,
-        "sw_version": ctrl.firmware_version,
+        "model": _clean(ctrl.model_sku) or "Dial",
     }
+    if _clean(ctrl.serial_number):
+        info["serial_number"] = ctrl.serial_number
+    if _clean(ctrl.firmware_version):
+        info["sw_version"] = ctrl.firmware_version
     if idu is not None:
         info["via_device"] = (DOMAIN, f"i_{idu.id}")
 

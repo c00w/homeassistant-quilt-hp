@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant import config_entries
@@ -18,27 +17,20 @@ pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 @pytest.fixture
 def mock_quilt_client():
     """Patch QuiltClient used by the config flow."""
-
     with patch("custom_components.quilt_hp.config_flow.QuiltClient") as mock_cls:
         client = MagicMock()
         client.__aenter__ = AsyncMock(return_value=client)
         client.__aexit__ = AsyncMock(return_value=False)
 
         async def mock_login(otp_callback=None):
-            """Mock login matching quilt-hp-python 0.2.2 callback pattern.
-            
+            """Mock login matching quilt-hp-python 0.3.0 callback pattern.
+
             Simulates the OTP flow by calling the callback and waiting
             for the OTP to be provided via the returned future.
             """
             if otp_callback:
                 # Call the callback, which returns a future that we await
-                otp_future = await otp_callback("send otp")
-                # OTP was provided (by the test via _otp_future.set_result)
-                # Simulate successful login after OTP
-                return None
-            else:
-                # No callback means cached token or no OTP needed
-                return None
+                await otp_callback("send otp")
 
         client.login = AsyncMock(side_effect=mock_login)
         mock_cls.return_value = client

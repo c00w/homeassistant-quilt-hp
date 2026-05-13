@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, override
+from typing import override
 
 from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.config_entries import ConfigEntry
@@ -77,7 +77,6 @@ class QuiltFanEntity(QuiltEntity, FanEntity):
     _attr_supported_features: FanEntityFeature = (
         FanEntityFeature.SET_SPEED | FanEntityFeature.PRESET_MODE
     )
-    _attr_preset_modes: ClassVar[list[str]] = list(_PRESET_TO_FAN.keys())
     _attr_translation_key: str = "fan"
 
     def __init__(self, coordinator: QuiltCoordinator, idu_id: str) -> None:
@@ -86,6 +85,7 @@ class QuiltFanEntity(QuiltEntity, FanEntity):
         self._idu_id: str = idu_id
         self._attr_unique_id: str = f"quilt_idu_fan_{idu_id}"
         self._attr_name: str | None = "Fan"
+        self._attr_preset_modes: list[str] = list(_PRESET_TO_FAN.keys())
 
     @property
     def _idu(self) -> IndoorUnit:

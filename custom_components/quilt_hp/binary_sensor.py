@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, override
+from typing import override
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -28,7 +28,6 @@ from quilt_hp.models.indoor_unit import IndoorUnit
 from .const import DOMAIN
 from .coordinator import QuiltCoordinator
 from .entity import QuiltEntity, controller_device_info, idu_device_info
-
 
 # ── IDU binary sensors ────────────────────────────────────────────────────────
 
@@ -119,8 +118,10 @@ async def async_setup_entry(
             entities.append(QuiltIDUBinarySensor(coordinator, idu.id, desc))
 
     for ctrl in snapshot.controllers:
-        for desc in CONTROLLER_BINARY_SENSOR_DESCRIPTIONS:
-            entities.append(QuiltControllerBinarySensor(coordinator, ctrl.id, desc))
+        for ctrl_desc in CONTROLLER_BINARY_SENSOR_DESCRIPTIONS:
+            entities.append(
+                QuiltControllerBinarySensor(coordinator, ctrl.id, ctrl_desc)
+            )
 
     async_add_entities(entities)
 
@@ -153,7 +154,9 @@ class QuiltIDUBinarySensor(QuiltEntity, BinarySensorEntity):
     @override
     def device_info(self) -> DeviceInfo:
         idu = self._idu
-        space = self.coordinator.spaces_by_id.get(idu.space_id) if idu.space_id else None
+        space = (
+            self.coordinator.spaces_by_id.get(idu.space_id) if idu.space_id else None
+        )
         return idu_device_info(idu, space)
 
     @property
@@ -192,7 +195,11 @@ class QuiltControllerBinarySensor(QuiltEntity, BinarySensorEntity):
     @override
     def device_info(self) -> DeviceInfo:
         ctrl = self._ctrl
-        idu = self.coordinator.idu_by_space_id.get(ctrl.space_id) if ctrl.space_id else None
+        idu = (
+            self.coordinator.idu_by_space_id.get(ctrl.space_id)
+            if ctrl.space_id
+            else None
+        )
         return controller_device_info(ctrl, idu)
 
     @property

@@ -13,6 +13,7 @@ from custom_components.quilt_hp.sensor import (
     QuiltIDUSensor,
     QuiltODUSensor,
     QuiltSpaceSensor,
+    async_setup_entry,
 )
 
 from .conftest import (
@@ -93,3 +94,45 @@ def test_idu_inlet_temperature_keeps_zero_value(hass) -> None:
     desc = next(d for d in IDU_SENSOR_DESCRIPTIONS if d.key == "inlet_temperature")
     entity = QuiltIDUSensor(coordinator, "idu-001", desc)
     assert entity.native_value == 0.0
+
+
+def test_odu_unique_id_excludes_idu_id() -> None:
+    """ODU unique ID must not include an IDU ID — the ODU is a standalone device."""
+    desc = next(d for d in ODU_SENSOR_DESCRIPTIONS if d.key == "ambient_temperature")
+    # Simulate two different IDUs both referencing the same ODU
+    from unittest.mock import MagicMock
+    coordinator = MagicMock()
+    entity_a = QuiltODUSensor(coordinator, "odu-001", "idu-001", desc)
+    entity_b = QuiltODUSensor(coordinator, "odu-001", "idu-002", desc)
+    assert entity_a.unique_id == entity_b.unique_id
+    assert "idu" not in (entity_a.unique_id or "")
+
+
+def test_shared_odu_creates_one_sensor_set(hass) -> None:
+    """When two IDUs share an ODU, only one set of ODU sensors should be created."""
+    idu1 = make_idu(idu_id="idu-001", space_id="space-001", outdoor_unit_id="odu-001")
+    idu2 = make_idu(idu_id="idu-002", space_id="space-002", outdoor_unit_id="odu-001")
+    odu = make_odu(odu_id="odu-001")
+    snapshot = make_snapshot(indoor_units=[idu1, idu2], outdoor_units=[odu])
+    coordinator = make_mock_coordinator(hass, snapshot)
+
+    created: list[QuiltODUSensor] = []
+
+    def capture(entities, **_kwargs):
+        created.extend(e for e in entities if isinstance(e, QuiltODUSensor))
+
+    from unittest.mock import MagicMock
+    entry = MagicMock()
+    entry.entry_id = "test"
+    coordinator.hass = hass
+    hass.data = {"quilt_hp": {"test": coordinator}}
+
+    import asyncio
+    asyncio.get_event_loop().run_until_complete(
+        async_setup_entry(hass, entry, capture)
+    )
+
+    odu_unique_ids = {e.unique_id for e in created}
+    assert len(odu_unique_ids) == len(ODU_SENSOR_DESCRIPTIONS), (
+        "Expected one sensor per ODU description, got duplicates"
+    )

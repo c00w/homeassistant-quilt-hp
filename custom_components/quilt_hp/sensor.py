@@ -348,15 +348,20 @@ async def async_setup_entry(
             for qsm_desc in QSM_SENSOR_DESCRIPTIONS:
                 entities.append(QuiltQSMSensor(coordinator, idu.id, qsm_desc))
 
-    # OutdoorUnit sensors — created for each IDU that has an outdoor unit
+    # OutdoorUnit sensors — one set per ODU, linked via the first IDU that
+    # references it.
+    # An ODU can serve multiple IDUs (multi-zone), so iterating over IDUs would create
+    # duplicate sensor sets for the same ODU device.
+    odu_to_first_idu: dict[str, str] = {}
     for idu in snapshot.indoor_units:
-        if not idu.outdoor_unit_id:
-            continue
-        odu = coordinator.odu_by_id.get(idu.outdoor_unit_id)
+        if idu.outdoor_unit_id and idu.outdoor_unit_id not in odu_to_first_idu:
+            odu_to_first_idu[idu.outdoor_unit_id] = idu.id
+    for odu_id, idu_id in odu_to_first_idu.items():
+        odu = coordinator.odu_by_id.get(odu_id)
         if not odu:
             continue
         for odu_desc in ODU_SENSOR_DESCRIPTIONS:
-            entities.append(QuiltODUSensor(coordinator, odu.id, idu.id, odu_desc))
+            entities.append(QuiltODUSensor(coordinator, odu_id, idu_id, odu_desc))
 
     # Controller (Dial) sensors
     for ctrl in snapshot.controllers:
@@ -463,7 +468,7 @@ class QuiltODUSensor(QuiltEntity, SensorEntity):
         self.entity_description = description
         self._odu_id: str = odu_id
         self._idu_id: str = idu_id
-        self._attr_unique_id: str = f"quilt_odu_{odu_id}_{idu_id}_{description.key}"
+        self._attr_unique_id: str = f"quilt_odu_{odu_id}_{description.key}"
 
     @property
     def _odu(self) -> OutdoorUnit:
