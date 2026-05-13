@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, override
+from typing import TYPE_CHECKING, Any, override
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -12,16 +12,18 @@ from homeassistant.components.light import (
     LightEntity,
     LightEntityFeature,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from quilt_hp.models.enums import LedAnimation
 from quilt_hp.models.indoor_unit import IndoorUnit
+from quilt_hp.models.system import SystemSnapshot
 
-from .const import DOMAIN
 from .coordinator import QuiltCoordinator
+
+if TYPE_CHECKING:
+    from . import QuiltConfigEntry
 from .entity import QuiltEntity, idu_device_info
 
 
@@ -54,12 +56,14 @@ _ANIMATION_TO_EFFECT: dict[LedAnimation, str] = {
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: QuiltConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up light entities from a config entry."""
-    coordinator: QuiltCoordinator = hass.data[DOMAIN][entry.entry_id]
-    snapshot = coordinator.data
+    coordinator = entry.runtime_data
+    snapshot: SystemSnapshot | None = coordinator.data
+    if snapshot is None:
+        return
 
     entities = [QuiltLightEntity(coordinator, idu.id) for idu in snapshot.indoor_units]
     async_add_entities(entities)
@@ -143,7 +147,7 @@ class QuiltLightEntity(QuiltEntity, LightEntity):
             led_color_code=color_code,
             led_animation=animation,
         )
-        await self.coordinator.async_request_refresh()
+        await self._async_refresh_if_not_streaming()
 
     @override
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -153,4 +157,4 @@ class QuiltLightEntity(QuiltEntity, LightEntity):
             self._idu,
             led_brightness=0.0,
         )
-        await self.coordinator.async_request_refresh()
+        await self._async_refresh_if_not_streaming()

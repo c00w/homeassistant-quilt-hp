@@ -36,5 +36,22 @@
     "abort": {
       "already_configured": "This Quilt home is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Quilt options",
+        "description": "Adjust settings for this Quilt home. The polling interval is a fallback used when the real-time stream is unavailable.",
+        "data": {
+          "polling_interval": "Polling interval (minutes)"
+        }
+      }
+    }
+  },
+  "issues": {
+    "stream_degraded": {
+      "title": "Quilt real-time stream is degraded",
+      "description": "The Quilt cloud connection has experienced repeated errors. The integration is falling back to polling every 5 minutes. Check your internet connection or the Quilt cloud status. The issue will resolve automatically once the stream reconnects."
+    }
   }
 }

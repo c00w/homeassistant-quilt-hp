@@ -6,9 +6,15 @@ from collections.abc import Awaitable, Callable
 import contextlib
 from datetime import timedelta
 import logging
-from typing import Any, TypeVar, override
+from typing import Any, override
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.issue_registry import (
+    IssueSeverity,
+    async_create_issue,
+    async_delete_issue,
+)
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from quilt_hp import QuiltClient  # type: ignore[attr-defined]
@@ -18,13 +24,20 @@ from quilt_hp.models.indoor_unit import IndoorUnit
 from quilt_hp.models.outdoor_unit import OutdoorUnit
 from quilt_hp.models.qsm import QuiltSmartModule
 from quilt_hp.models.space import Space
-from quilt_hp.models.system import SystemSnapshot
+from quilt_hp.models.system import ComfortSetting, SystemSnapshot
 
-from .const import COORDINATOR_UPDATE_INTERVAL_MINUTES, DOMAIN
+from .const import (
+    CONF_POLLING_INTERVAL,
+    COORDINATOR_UPDATE_INTERVAL_MINUTES,
+    DOMAIN,
+)
 from .token_store import HATokenStore
 
 _LOGGER = logging.getLogger(__name__)
-_T = TypeVar("_T")
+
+# Number of consecutive stream errors before raising a HA repair issue.
+_STREAM_ERROR_THRESHOLD: int = 5
+_ISSUE_STREAM_DEGRADED: str = "stream_degraded"
 
 
 class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
@@ -36,25 +49,36 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
     """
 
     def __init__(
-        self, hass: HomeAssistant, email: str, system_id: str | None = None
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        email: str,
+        system_id: str | None = None,
     ) -> None:
         """Initialize the coordinator."""
+        poll_minutes: int = entry.options.get(
+            CONF_POLLING_INTERVAL, COORDINATOR_UPDATE_INTERVAL_MINUTES
+        )
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=DOMAIN,
-            update_interval=timedelta(minutes=COORDINATOR_UPDATE_INTERVAL_MINUTES),
+            update_interval=timedelta(minutes=poll_minutes),
         )
         token_store = HATokenStore(hass)
         self._client: QuiltClient = QuiltClient(email, token_store=token_store)
         self._system_id: str | None = system_id  # None → library picks default
         self._stream: Any = None  # Using Any for stream due to dynamic library types
+        self._stream_error_count: int = 0
         self.spaces_by_id: dict[str, Space] = {}
         self.idu_by_id: dict[str, IndoorUnit] = {}
         self.idu_by_space_id: dict[str, IndoorUnit] = {}
         self.odu_by_id: dict[str, OutdoorUnit] = {}
         self.ctrl_by_id: dict[str, Controller] = {}
         self.qsm_by_id: dict[str, QuiltSmartModule] = {}
+        self.cs_by_id: dict[str, ComfortSetting] = {}
+        self.cs_by_space_id: dict[str, list[ComfortSetting]] = {}
 
     @override
     def async_set_updated_data(self, data: SystemSnapshot) -> None:
@@ -65,8 +89,37 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         self.odu_by_id = {u.id: u for u in data.outdoor_units}
         self.ctrl_by_id = {c.id: c for c in data.controllers}
         self.qsm_by_id = {q.id: q for q in data.quilt_smart_modules}
+        self.cs_by_id = {cs.id: cs for cs in data.comfort_settings}
+        cs_by_space: dict[str, list[ComfortSetting]] = {}
+        for cs in data.comfort_settings:
+            cs_by_space.setdefault(cs.space_id, []).append(cs)
+        self.cs_by_space_id = cs_by_space
 
         super().async_set_updated_data(data)
+
+    def _on_stream_error(self, err: object) -> None:
+        """Handle a stream error, surfacing a repair issue after repeated failures."""
+        self._stream_error_count += 1
+        _LOGGER.warning(
+            "Quilt stream error (%d); will reconnect: %s",
+            self._stream_error_count,
+            err,
+        )
+        if self._stream_error_count >= _STREAM_ERROR_THRESHOLD:
+            async_create_issue(
+                self.hass,
+                DOMAIN,
+                _ISSUE_STREAM_DEGRADED,
+                is_fixable=False,
+                severity=IssueSeverity.WARNING,
+                translation_key="stream_degraded",
+            )
+
+    def _on_stream_reconnect(self) -> None:
+        """Clear the stream error counter and resolve any open repair issue."""
+        if self._stream_error_count > 0:
+            self._stream_error_count = 0
+            async_delete_issue(self.hass, DOMAIN, _ISSUE_STREAM_DEGRADED)
 
     # ------------------------------------------------------------------
     # Public API used by __init__.py
@@ -76,6 +129,16 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
     def client(self) -> QuiltClient:
         """Expose the underlying QuiltClient for entity write operations."""
         return self._client
+
+    @property
+    def is_streaming(self) -> bool:
+        """Return True when the gRPC stream is active.
+
+        Entities use this to skip ``async_request_refresh()`` after writes —
+        the stream delivers state changes within milliseconds, making an
+        immediate poll redundant.
+        """
+        return self._stream is not None
 
     async def async_set_space(self, space: Space, **kwargs: Any) -> Space:
         """Set space fields with one transparent auth-refresh retry."""
@@ -118,40 +181,54 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
 
     async def _start_stream(self, snapshot: SystemSnapshot) -> None:
         topics = snapshot.stream_topics()
-        self._stream = self._client.stream(topics, max_reconnects=-1)
-        self._stream.on_space_update(self._on_space_update)
-        self._stream.on_indoor_unit_update(self._on_idu_update)
-        self._stream.on_outdoor_unit_update(self._on_odu_update)
-        self._stream.on_controller_update(self._on_ctrl_update)
-        self._stream.on_qsm_update(self._on_qsm_update)
-        self._stream.on_error(
-            lambda err: _LOGGER.warning("Quilt stream error; will reconnect: %s", err)
-        )
-        await self._stream.start()
+        stream = self._client.stream(topics, max_reconnects=-1)
+        stream.on_space_update(self._on_space_update)
+        stream.on_indoor_unit_update(self._on_idu_update)
+        stream.on_outdoor_unit_update(self._on_odu_update)
+        stream.on_controller_update(self._on_ctrl_update)
+        stream.on_qsm_update(self._on_qsm_update)
+        stream.on_error(self._on_stream_error)
+        await stream.start()
+        # Only assign after successful start so async_shutdown doesn't try to
+        # stop a stream that never began.
+        self._stream = stream
 
     def _on_space_update(self, space: Space) -> None:
         if self.data:
             _ = self.data.apply_space(space)
+            # Targeted index update — avoids rebuilding all 6 dicts on every tick.
+            self.spaces_by_id[space.id] = space
+            self._on_stream_reconnect()
             self.async_set_updated_data(self.data)
 
     def _on_idu_update(self, idu: IndoorUnit) -> None:
         if self.data:
             _ = self.data.apply_indoor_unit(idu)
+            self.idu_by_id[idu.id] = idu
+            if idu.space_id:
+                self.idu_by_space_id[idu.space_id] = idu
+            self._on_stream_reconnect()
             self.async_set_updated_data(self.data)
 
     def _on_odu_update(self, odu: OutdoorUnit) -> None:
         if self.data:
             _ = self.data.apply_outdoor_unit(odu)
+            self.odu_by_id[odu.id] = odu
+            self._on_stream_reconnect()
             self.async_set_updated_data(self.data)
 
     def _on_ctrl_update(self, ctrl: Controller) -> None:
         if self.data:
             _ = self.data.apply_controller(ctrl)
+            self.ctrl_by_id[ctrl.id] = ctrl
+            self._on_stream_reconnect()
             self.async_set_updated_data(self.data)
 
     def _on_qsm_update(self, qsm: QuiltSmartModule) -> None:
         if self.data:
             _ = self.data.apply_qsm(qsm)
+            self.qsm_by_id[qsm.id] = qsm
+            self._on_stream_reconnect()
             self.async_set_updated_data(self.data)
 
     # ------------------------------------------------------------------
@@ -168,8 +245,14 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         except Exception as err:
             raise UpdateFailed(f"Error fetching Quilt snapshot: {err}") from err
 
-    async def _with_auth_retry(self, operation: Callable[[], Awaitable[_T]]) -> _T:
-        """Retry one write after re-login when access token has expired."""
+    async def _with_auth_retry[T](self, operation: Callable[[], Awaitable[T]]) -> T:
+        """Retry one write after re-login when access token has expired.
+
+        The Quilt library raises ``QuiltError`` for all API failures. We detect
+        expired-JWT errors by inspecting the message text.  If the upstream
+        library ever exposes a dedicated exception class or error code for auth
+        failures, replace this string check with a type/code check.
+        """
         try:
             return await operation()
         except QuiltError as err:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -21,11 +22,16 @@ class HATokenStore:
 
     Tokens are keyed by email address so multiple accounts can coexist in a
     single HA installation.
+
+    A write lock serialises concurrent ``save()`` calls to prevent one coroutine
+    from overwriting another's changes when two accounts authenticate at the
+    same time.
     """
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the token store."""
         self._store: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, _STORE_KEY)
+        self._write_lock: asyncio.Lock = asyncio.Lock()
 
     async def load(self, email: str) -> CachedTokens | None:
         """Load cached tokens for *email*, or ``None`` if not present."""
@@ -45,10 +51,11 @@ class HATokenStore:
 
     async def save(self, email: str, tokens: CachedTokens) -> None:
         """Persist *tokens* for *email*."""
-        data: dict[str, Any] = await self._store.async_load() or {}
-        data[email] = {
-            "id_token": tokens.id_token,
-            "refresh_token": tokens.refresh_token,
-            "expires_at": tokens.expires_at,
-        }
-        await self._store.async_save(data)
+        async with self._write_lock:
+            data: dict[str, Any] = await self._store.async_load() or {}
+            data[email] = {
+                "id_token": tokens.id_token,
+                "refresh_token": tokens.refresh_token,
+                "expires_at": tokens.expires_at,
+            }
+            await self._store.async_save(data)

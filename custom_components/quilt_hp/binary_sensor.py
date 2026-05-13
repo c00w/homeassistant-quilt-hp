@@ -9,24 +9,26 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from quilt_hp.models.controller import Controller
 from quilt_hp.models.enums import OccupancyState, Presence
 from quilt_hp.models.indoor_unit import IndoorUnit
+from quilt_hp.models.system import SystemSnapshot
 
-from .const import DOMAIN
 from .coordinator import QuiltCoordinator
+
+if TYPE_CHECKING:
+    from . import QuiltConfigEntry
 from .entity import QuiltEntity, controller_device_info, idu_device_info
 
 # ── IDU binary sensors ────────────────────────────────────────────────────────
@@ -105,12 +107,14 @@ CONTROLLER_BINARY_SENSOR_DESCRIPTIONS: tuple[ControllerBinarySensorDescription, 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: QuiltConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up binary sensor entities from a config entry."""
-    coordinator: QuiltCoordinator = hass.data[DOMAIN][entry.entry_id]
-    snapshot = coordinator.data
+    coordinator = entry.runtime_data
+    snapshot: SystemSnapshot | None = coordinator.data
+    if snapshot is None:
+        return
     entities: list[BinarySensorEntity] = []
 
     for idu in snapshot.indoor_units:

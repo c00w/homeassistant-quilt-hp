@@ -1,5 +1,5 @@
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 88
 
 [tool.ruff.lint]
@@ -43,7 +43,7 @@ known-first-party = ["custom_components.quilt_hp"]
 combine-as-imports = true
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 show_error_codes = true
 ignore_missing_imports = true
 strict = true
@@ -62,7 +62,7 @@ ignore_missing_imports = true
 
 [tool.basedpyright]
 include = ["custom_components/quilt_hp"]
-pythonVersion = "3.13"
+pythonVersion = "3.14"
 typeCheckingMode = "all" # Ultra-strict mode
 
 # Loosen some checks that are too noisy in HA environment

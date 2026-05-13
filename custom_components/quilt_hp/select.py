@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from homeassistant.components.select import SelectEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from quilt_hp.models.enums import LouverAngle, LouverMode
 from quilt_hp.models.indoor_unit import IndoorUnit
+from quilt_hp.models.system import SystemSnapshot
 
-from .const import DOMAIN
 from .coordinator import QuiltCoordinator
+
+if TYPE_CHECKING:
+    from . import QuiltConfigEntry
 from .entity import QuiltEntity, idu_device_info
 
 _LOUVER_MODE_OPTIONS: list[str] = ["closed", "sweep", "fixed", "auto"]
@@ -53,12 +55,14 @@ _LOUVER_ANGLE_TO_STR: dict[LouverAngle, str] = {
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: QuiltConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up select entities from a config entry."""
-    coordinator: QuiltCoordinator = hass.data[DOMAIN][entry.entry_id]
-    snapshot = coordinator.data
+    coordinator = entry.runtime_data
+    snapshot: SystemSnapshot | None = coordinator.data
+    if snapshot is None:
+        return
 
     entities: list[SelectEntity] = []
     for idu in snapshot.indoor_units:
@@ -105,7 +109,7 @@ class QuiltLouverModeSelect(QuiltEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         mode = _STR_TO_LOUVER_MODE[option]
         await self.coordinator.async_set_indoor_unit(self._idu, louver_mode=mode)
-        await self.coordinator.async_request_refresh()
+        await self._async_refresh_if_not_streaming()
 
 
 class QuiltLouverAngleSelect(QuiltEntity, SelectEntity):
@@ -151,4 +155,4 @@ class QuiltLouverAngleSelect(QuiltEntity, SelectEntity):
             louver_mode=LouverMode.FIXED,
             louver_position=angle.to_wire(),
         )
-        await self.coordinator.async_request_refresh()
+        await self._async_refresh_if_not_streaming()

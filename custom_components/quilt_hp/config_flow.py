@@ -8,12 +8,26 @@ import logging
 from typing import Any, override
 
 from homeassistant import config_entries
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+)
 import voluptuous as vol
 
 from quilt_hp import QuiltClient  # type: ignore[attr-defined]
 from quilt_hp.exceptions import QuiltAuthError
 
-from .const import CONF_EMAIL, CONF_HOME_NAME, CONF_SYSTEM_ID, DOMAIN
+from .const import (
+    CONF_EMAIL,
+    CONF_HOME_NAME,
+    CONF_POLLING_INTERVAL,
+    CONF_SYSTEM_ID,
+    COORDINATOR_UPDATE_INTERVAL_MAX,
+    COORDINATOR_UPDATE_INTERVAL_MIN,
+    COORDINATOR_UPDATE_INTERVAL_MINUTES,
+    DOMAIN,
+)
 from .token_store import HATokenStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,6 +37,13 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow: email → OTP → (home selection if multiple) → done."""
 
     VERSION: int = 1
+
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> QuiltOptionsFlow:
+        """Return the options flow handler."""
+        return QuiltOptionsFlow()
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -121,8 +142,13 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             otp = user_input["otp"].strip()
-            assert self._otp_future is not None
-            assert self._login_task is not None
+            if self._otp_future is None or self._login_task is None:
+                return self.async_show_form(
+                    step_id="otp",
+                    data_schema=vol.Schema({vol.Required("otp"): str}),
+                    errors={"base": "unknown"},
+                    description_placeholders={"email": self._email},
+                )
 
             self._otp_future.set_result(otp)
             try:
@@ -270,3 +296,35 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _ = await self._client.__aexit__(None, None, None)
             self._client = None
 
+
+class QuiltOptionsFlow(config_entries.OptionsFlow):
+    """Options flow: lets the user adjust the polling fallback interval."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Show (and process) the options form."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        current: int = self.config_entry.options.get(
+            CONF_POLLING_INTERVAL, COORDINATOR_UPDATE_INTERVAL_MINUTES
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_POLLING_INTERVAL, default=current
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=COORDINATOR_UPDATE_INTERVAL_MIN,
+                            max=COORDINATOR_UPDATE_INTERVAL_MAX,
+                            step=1,
+                            mode=NumberSelectorMode.BOX,
+                            unit_of_measurement="minutes",
+                        )
+                    ),
+                }
+            ),
+        )

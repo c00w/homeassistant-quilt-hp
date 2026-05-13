@@ -101,6 +101,7 @@ def test_odu_unique_id_excludes_idu_id() -> None:
     desc = next(d for d in ODU_SENSOR_DESCRIPTIONS if d.key == "ambient_temperature")
     # Simulate two different IDUs both referencing the same ODU
     from unittest.mock import MagicMock
+
     coordinator = MagicMock()
     entity_a = QuiltODUSensor(coordinator, "odu-001", "idu-001", desc)
     entity_b = QuiltODUSensor(coordinator, "odu-001", "idu-002", desc)
@@ -122,15 +123,15 @@ def test_shared_odu_creates_one_sensor_set(hass) -> None:
         created.extend(e for e in entities if isinstance(e, QuiltODUSensor))
 
     from unittest.mock import MagicMock
+
     entry = MagicMock()
     entry.entry_id = "test"
+    entry.runtime_data = coordinator
     coordinator.hass = hass
-    hass.data = {"quilt_hp": {"test": coordinator}}
 
     import asyncio
-    asyncio.get_event_loop().run_until_complete(
-        async_setup_entry(hass, entry, capture)
-    )
+
+    asyncio.get_event_loop().run_until_complete(async_setup_entry(hass, entry, capture))
 
     odu_unique_ids = {e.unique_id for e in created}
     assert len(odu_unique_ids) == len(ODU_SENSOR_DESCRIPTIONS), (

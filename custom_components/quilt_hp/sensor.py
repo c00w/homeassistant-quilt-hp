@@ -13,8 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-import math
-from typing import Any, override
+from typing import TYPE_CHECKING, Any, override
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -22,7 +21,6 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     LIGHT_LUX,
     PERCENTAGE,
@@ -34,15 +32,15 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from quilt_hp.models.controller import Controller
 from quilt_hp.models.indoor_unit import IndoorUnit
 from quilt_hp.models.outdoor_unit import OutdoorUnit
 from quilt_hp.models.qsm import QuiltSmartModule
 from quilt_hp.models.space import Space
+from quilt_hp.models.system import SystemSnapshot
 
-from .const import DOMAIN
 from .coordinator import QuiltCoordinator
 from .entity import (
     QuiltEntity,
@@ -50,14 +48,12 @@ from .entity import (
     idu_device_info,
     odu_device_info,
 )
+from .utils import normalize_temperature as _normalize_temperature
+
+if TYPE_CHECKING:
+    from . import QuiltConfigEntry
 
 # ── Space temperature sensor (on QSM device) ──────────────────────────────────
-
-
-def _normalize_temperature(value: float | None) -> float | None:
-    if value is None or math.isnan(value):
-        return None
-    return value
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -228,6 +224,9 @@ QSM_SENSOR_DESCRIPTIONS: tuple[QSMSensorDescription, ...] = (
 @dataclass(frozen=True, kw_only=True)
 class ODUSensorDescription(SensorEntityDescription):
     value_fn: Callable[[OutdoorUnit], Any] = lambda _: None
+    available_fn: Callable[[OutdoorUnit], bool] = lambda odu: (
+        odu.performance_data is not None
+    )
 
 
 ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
@@ -316,12 +315,14 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: QuiltConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up sensor entities from a config entry."""
-    coordinator: QuiltCoordinator = hass.data[DOMAIN][entry.entry_id]
-    snapshot = coordinator.data
+    coordinator = entry.runtime_data
+    snapshot: SystemSnapshot | None = coordinator.data
+    if snapshot is None:
+        return
     entities: list[SensorEntity] = []
 
     # Index the first IDU per space so space-level sensors have a device to live on.
@@ -479,6 +480,11 @@ class QuiltODUSensor(QuiltEntity, SensorEntity):
     def device_info(self) -> DeviceInfo:
         idu = self.coordinator.idu_by_id.get(self._idu_id)
         return odu_device_info(self._odu, idu)
+
+    @property
+    @override
+    def available(self) -> bool:
+        return super().available and self.entity_description.available_fn(self._odu)
 
     @property
     @override
