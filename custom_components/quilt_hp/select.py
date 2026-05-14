@@ -31,25 +31,13 @@ _LOUVER_MODE_TO_STR: dict[LouverMode, str] = {
     v: k for k, v in _STR_TO_LOUVER_MODE.items()
 }
 
-_LOUVER_ANGLE_OPTIONS: list[str] = [
-    "angle_1",
-    "angle_2",
-    "angle_3",
-    "angle_4",
-    "angle_5",
-]
+# Option strings are the human-readable labels from LouverAngle.label so the
+# HA UI shows them directly without needing a separate translation lookup.
+_LOUVER_ANGLE_OPTIONS: list[str] = [a.label for a in LouverAngle]
 
-_STR_TO_LOUVER_ANGLE: dict[str, LouverAngle] = {
-    "angle_1": LouverAngle.ANGLE1,
-    "angle_2": LouverAngle.ANGLE2,
-    "angle_3": LouverAngle.ANGLE3,
-    "angle_4": LouverAngle.ANGLE4,
-    "angle_5": LouverAngle.ANGLE5,
-}
+_LABEL_TO_LOUVER_ANGLE: dict[str, LouverAngle] = {a.label: a for a in LouverAngle}
 
-_LOUVER_ANGLE_TO_STR: dict[LouverAngle, str] = {
-    v: k for k, v in _STR_TO_LOUVER_ANGLE.items()
-}
+_LOUVER_ANGLE_TO_LABEL: dict[LouverAngle, str] = {a: a.label for a in LouverAngle}
 
 
 async def async_setup_entry(
@@ -113,7 +101,6 @@ class QuiltLouverAngleSelect(QuiltEntity, SelectEntity):
     """Select entity for indoor unit louver angle (relevant when mode=FIXED)."""
 
     _attr_options: list[str] = _LOUVER_ANGLE_OPTIONS
-    _attr_translation_key: str = "louver_angle"
 
     def __init__(self, coordinator: QuiltCoordinator, idu_id: str) -> None:
         """Initialize the louver angle select entity."""
@@ -142,11 +129,11 @@ class QuiltLouverAngleSelect(QuiltEntity, SelectEntity):
     @override
     def current_option(self) -> str | None:
         angle = LouverAngle.from_wire(self._idu.controls.louver_fixed_position)
-        return _LOUVER_ANGLE_TO_STR.get(angle)
+        return _LOUVER_ANGLE_TO_LABEL.get(angle)
 
     @override
     async def async_select_option(self, option: str) -> None:
-        angle = _STR_TO_LOUVER_ANGLE[option]
+        angle = _LABEL_TO_LOUVER_ANGLE[option]
         await self.coordinator.async_set_indoor_unit(
             self._idu,
             louver_mode=LouverMode.FIXED,

@@ -53,5 +53,17 @@
       "title": "Quilt real-time stream is degraded",
       "description": "The Quilt cloud connection has experienced repeated errors. The integration is falling back to polling every 5 minutes. Check your internet connection or the Quilt cloud status. The issue will resolve automatically once the stream reconnects."
     }
+  },
+  "entity": {
+    "select": {
+      "louver_mode": {
+        "state": {
+          "closed": "Closed",
+          "sweep": "Sweep",
+          "fixed": "Fixed",
+          "auto": "Auto"
+        }
+      }
+    }
   }
 }

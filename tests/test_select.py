@@ -43,7 +43,7 @@ async def test_louver_mode_select(coordinator_sweep) -> None:
 
 def test_louver_angle_current_option(coordinator_fixed) -> None:
     entity = QuiltLouverAngleSelect(coordinator_fixed, "idu-001")
-    assert entity.current_option == "angle_3"
+    assert entity.current_option == LouverAngle.ANGLE3.label
 
 
 def test_louver_angle_available_when_not_fixed(coordinator_sweep) -> None:
@@ -53,7 +53,7 @@ def test_louver_angle_available_when_not_fixed(coordinator_sweep) -> None:
 
 async def test_louver_angle_select(coordinator_fixed) -> None:
     entity = QuiltLouverAngleSelect(coordinator_fixed, "idu-001")
-    await entity.async_select_option("angle_5")
+    await entity.async_select_option(LouverAngle.ANGLE5.label)
     call_kwargs = coordinator_fixed.async_set_indoor_unit.call_args[1]
     assert call_kwargs["louver_mode"] == LouverMode.FIXED
     assert abs(call_kwargs["louver_position"] - LouverAngle.ANGLE5.to_wire()) < 0.01
