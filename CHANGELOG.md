@@ -4,6 +4,7 @@
 
 ### Added
 - README banner image (`images/banner.svg`) and top-of-page banner block
+- README link to `quilt-hp-python` docs for protocol, streaming, and feature details
 
 ## [0.2.0] - 2026-05-13
 

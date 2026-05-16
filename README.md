@@ -13,6 +13,9 @@ A Home Assistant custom component for [Quilt](https://www.quilt.com/) mini-split
 Built on top of [`quilt-hp-python`](https://github.com/eman/quilt-hp-python) — a fully-async
 gRPC client that communicates directly with the Quilt cloud API.
 
+For protocol details, streaming behavior, and the full client feature set, see the
+[`quilt-hp-python` documentation](https://eman.github.io/quilt-hp-python/).
+
 ## Features
 
 - **Climate entities** — control HVAC mode and setpoints for each Quilt space (room)
