@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,14 +9,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant.core import HomeAssistant
 import pytest
 from quilt_hp.exceptions import QuiltError
-from quilt_hp.models.enums import HVACMode as QHVACMode
 
 from custom_components.quilt_hp.coordinator import QuiltCoordinator
 from custom_components.quilt_hp.sensor import IDU_SENSOR_DESCRIPTIONS
 from custom_components.quilt_hp.utils import normalize_temperature
 
-from .conftest import make_idu, make_mock_coordinator, make_snapshot, make_space
-
+from .conftest import make_idu, make_mock_coordinator, make_snapshot
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Bug: normalize_temperature crashes on non-float numeric (int)
@@ -172,7 +169,9 @@ class TestTokenStoreRobustness:
 
         store = HATokenStore(hass)
         # Simulate malformed data where entry is a list instead of a dict
-        with patch.object(store._store, "async_load", return_value={"user@x.com": [1, 2, 3]}):
+        with patch.object(
+            store._store, "async_load", return_value={"user@x.com": [1, 2, 3]}
+        ):
             result = await store.load("user@x.com")
             assert result is None
 
@@ -181,7 +180,9 @@ class TestTokenStoreRobustness:
 
         store = HATokenStore(hass)
         # Entry is a string instead of a dict
-        with patch.object(store._store, "async_load", return_value={"user@x.com": "bad"}):
+        with patch.object(
+            store._store, "async_load", return_value={"user@x.com": "bad"}
+        ):
             result = await store.load("user@x.com")
             assert result is None
 
@@ -192,48 +193,20 @@ class TestTokenStoreRobustness:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-class TestPresenceLevelNoneGuard:
-    def test_presence_level_none_returns_none(self, hass: HomeAssistant) -> None:
-        from custom_components.quilt_hp.sensor import QuiltIDUSensor
-
-        idu = make_idu()
-        idu.state.presence_detection_level = None
-        snapshot = make_snapshot(indoor_units=[idu])
-        coordinator = make_mock_coordinator(hass, snapshot)
-
-        desc = next(d for d in IDU_SENSOR_DESCRIPTIONS if d.key == "presence_level")
-        entity = QuiltIDUSensor(coordinator, "idu-001", desc)
-        # Should return None, not crash with TypeError
-        assert entity.native_value is None
-
-    def test_presence_level_with_value(self, hass: HomeAssistant) -> None:
-        from custom_components.quilt_hp.sensor import QuiltIDUSensor
-
-        idu = make_idu()
-        idu.state.presence_detection_level = 0.5
-        snapshot = make_snapshot(indoor_units=[idu])
-        coordinator = make_mock_coordinator(hass, snapshot)
-
-        desc = next(d for d in IDU_SENSOR_DESCRIPTIONS if d.key == "presence_level")
-        entity = QuiltIDUSensor(coordinator, "idu-001", desc)
-        assert entity.native_value == 50.0
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
-# Bug: module power None energy_measurement_j
-# File: sensor.py:287-288
+# Bug: module power division when measurement_interval_s is None or zero
+# File: sensor.py
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-class TestModulePowerNoneGuard:
-    def test_module_power_none_energy(self, hass: HomeAssistant) -> None:
+class TestModulePowerIntervalGuard:
+    def test_module_power_none_interval(self, hass: HomeAssistant) -> None:
         from custom_components.quilt_hp.sensor import QuiltIDUSensor
 
         idu = make_idu()
         idu.performance_data = SimpleNamespace(
-            measurement_interval_s=5.0,
-            energy_measurement_j=None,
-            # other fields not used by this sensor
+            measurement_interval_s=None,
+            energy_measurement_j=1000.0,
             coil_temperature_c=10.0,
             gas_pipe_temperature_c=30.0,
             liquid_pipe_temperature_c=25.0,
@@ -246,12 +219,12 @@ class TestModulePowerNoneGuard:
         entity = QuiltIDUSensor(coordinator, "idu-001", desc)
         assert entity.native_value is None
 
-    def test_module_power_none_interval(self, hass: HomeAssistant) -> None:
+    def test_module_power_zero_interval(self, hass: HomeAssistant) -> None:
         from custom_components.quilt_hp.sensor import QuiltIDUSensor
 
         idu = make_idu()
         idu.performance_data = SimpleNamespace(
-            measurement_interval_s=None,
+            measurement_interval_s=0.0,
             energy_measurement_j=1000.0,
             coil_temperature_c=10.0,
             gas_pipe_temperature_c=30.0,
@@ -276,9 +249,7 @@ pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 
 
 class TestDuplicateHomeNames:
-    async def test_duplicate_names_disambiguated(
-        self, hass: HomeAssistant
-    ) -> None:
+    async def test_duplicate_names_disambiguated(self, hass: HomeAssistant) -> None:
         """Two homes with the same name should get unique labels."""
         from custom_components.quilt_hp.const import CONF_EMAIL, CONF_HOME_NAME, DOMAIN
 

@@ -11,7 +11,6 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.components.climate import HVACMode
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -22,7 +21,6 @@ from quilt_hp.models.enums import (
     FanSpeed,
     HVACMode as QHVACMode,
     LedAnimation,
-    LouverAngle,
     LouverMode,
 )
 from quilt_hp.models.qsm import QsmSensors, QuiltSmartModule
@@ -38,7 +36,10 @@ from custom_components.quilt_hp.climate import QuiltClimateEntity
 from custom_components.quilt_hp.coordinator import QuiltCoordinator
 from custom_components.quilt_hp.fan import QuiltFanEntity, _pct_to_fan_speed
 from custom_components.quilt_hp.light import QuiltLightEntity
-from custom_components.quilt_hp.select import QuiltLouverAngleSelect, QuiltLouverModeSelect
+from custom_components.quilt_hp.select import (
+    QuiltLouverAngleSelect,
+    QuiltLouverModeSelect,
+)
 from custom_components.quilt_hp.sensor import (
     CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS,
     CONTROLLER_SENSOR_DESCRIPTIONS,
@@ -46,6 +47,7 @@ from custom_components.quilt_hp.sensor import (
     ODU_SENSOR_DESCRIPTIONS,
     QSM_SENSOR_DESCRIPTIONS,
     REMOTE_SENSOR_DESCRIPTIONS,
+    SPACE_SENSOR_DESCRIPTIONS,
     QuiltControllerRemoteSensor,
     QuiltControllerSensor,
     QuiltEnergySensor,
@@ -54,7 +56,6 @@ from custom_components.quilt_hp.sensor import (
     QuiltQSMSensor,
     QuiltRemoteSensor,
     QuiltSpaceSensor,
-    SPACE_SENSOR_DESCRIPTIONS,
 )
 from custom_components.quilt_hp.switch import QuiltScheduleSwitch
 
@@ -62,14 +63,12 @@ from .conftest import (
     make_controller,
     make_ctrl_remote_sensor,
     make_idu,
-    make_location,
     make_mock_coordinator,
     make_odu,
     make_remote_sensor,
     make_snapshot,
     make_space,
 )
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -371,9 +370,7 @@ class TestCoordinatorEnergy:
         await coordinator._async_update_energy()
         client.get_energy.assert_not_called()
 
-    async def test_energy_fetch_success(
-        self, hass: HomeAssistant, mock_client
-    ) -> None:
+    async def test_energy_fetch_success(self, hass: HomeAssistant, mock_client) -> None:
         client, _stream = mock_client
         coordinator = QuiltCoordinator(hass, _entry_mock(), "u@e.com")
         await coordinator.async_setup()
@@ -399,9 +396,7 @@ class TestCoordinatorAuthRetry:
         await coordinator.async_setup()
 
         idu = make_idu()
-        client.set_indoor_unit = AsyncMock(
-            side_effect=QuiltError("Jwt is expired")
-        )
+        client.set_indoor_unit = AsyncMock(side_effect=QuiltError("Jwt is expired"))
         client.login = AsyncMock(side_effect=QuiltError("re-login failed"))
 
         with pytest.raises(ConfigEntryAuthFailed):
@@ -523,11 +518,18 @@ class TestClimateSetpoints:
         )
         # Use a wrapper to add the sentinel attribute
         controls = SimpleNamespace(
-            **{k: getattr(space.controls, k) for k in [
-                'hvac_mode', 'temperature_setpoint_c', 'cooling_setpoint_c',
-                'heating_setpoint_c', 'comfort_setting_id',
-                'comfort_setting_override', 'boost_mode',
-            ]},
+            **{
+                k: getattr(space.controls, k)
+                for k in [
+                    "hvac_mode",
+                    "temperature_setpoint_c",
+                    "cooling_setpoint_c",
+                    "heating_setpoint_c",
+                    "comfort_setting_id",
+                    "comfort_setting_override",
+                    "boost_mode",
+                ]
+            },
             has_standby_sentinel_setpoints=True,
             comfort_setting_id_or_none=None,
         )
@@ -557,8 +559,12 @@ class TestClimateSetpoints:
         assert cool == 24.5
 
     def test_comfort_settings_exclude_unspecified(self, hass: HomeAssistant) -> None:
-        cs_unspec = _make_comfort_setting(cs_id="cs-u", cs_type=ComfortSettingType.UNSPECIFIED)
-        cs_active = _make_comfort_setting(cs_id="cs-a", cs_type=ComfortSettingType.ACTIVE)
+        cs_unspec = _make_comfort_setting(
+            cs_id="cs-u", cs_type=ComfortSettingType.UNSPECIFIED
+        )
+        cs_active = _make_comfort_setting(
+            cs_id="cs-a", cs_type=ComfortSettingType.ACTIVE
+        )
         snapshot = make_snapshot()
         snapshot.comfort_settings = [cs_unspec, cs_active]
         coordinator = make_mock_coordinator(hass, snapshot)
@@ -792,9 +798,7 @@ class TestControllerRemoteSensor:
     def test_device_info(self, hass: HomeAssistant) -> None:
         crs = make_ctrl_remote_sensor()
         ctrl = make_controller()
-        snapshot = make_snapshot(
-            controllers=[ctrl], controller_remote_sensors=[crs]
-        )
+        snapshot = make_snapshot(controllers=[ctrl], controller_remote_sensors=[crs])
         coordinator = make_mock_coordinator(hass, snapshot)
         desc = CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS[0]
         entity = QuiltControllerRemoteSensor(coordinator, "crs-001", desc)
@@ -876,9 +880,7 @@ class TestLight:
         effect = entity.effect
         assert effect == "none"  # LedAnimation.NONE
 
-    async def test_turn_on_with_brightness_from_zero(
-        self, hass: HomeAssistant
-    ) -> None:
+    async def test_turn_on_with_brightness_from_zero(self, hass: HomeAssistant) -> None:
         idu = make_idu(led_brightness=0.0)
         snapshot = make_snapshot(indoor_units=[idu])
         coordinator = make_mock_coordinator(hass, snapshot)
@@ -1110,6 +1112,7 @@ class TestConfigFlowOTPEdgeCases:
         flow.context = {}
 
         otp_future = asyncio.get_running_loop().create_future()
+        _ = otp_future  # created to match real flow state setup
 
         async def fail_login(otp_callback=None):
             if otp_callback:
@@ -1185,7 +1188,7 @@ class TestConfigFlowOTPEdgeCases:
                 flow, "_route_after_login", new_callable=AsyncMock
             ) as mock_route:
                 mock_route.return_value = {"type": "create_entry"}
-                result = await flow.async_step_otp({"otp": "123456"})
+                await flow.async_step_otp({"otp": "123456"})
 
 
 class TestConfigFlowListSystemsFailure:
@@ -1240,10 +1243,6 @@ class TestConfigFlowOptionsFlow:
 
     async def test_options_flow_shows_form(self, hass: HomeAssistant) -> None:
         from custom_components.quilt_hp.config_flow import QuiltOptionsFlow
-        from custom_components.quilt_hp.const import (
-            CONF_POLLING_INTERVAL,
-            COORDINATOR_UPDATE_INTERVAL_MINUTES,
-        )
 
         entry = MagicMock()
         entry.options = {}
@@ -1284,16 +1283,14 @@ class TestConfigFlowReauth:
 
     @pytest.mark.parametrize("expected_lingering_tasks", [True])
     async def test_reauth_prefills_email(self, hass: HomeAssistant) -> None:
-        from custom_components.quilt_hp.const import CONF_EMAIL, CONF_SYSTEM_ID, DOMAIN
+        from custom_components.quilt_hp.const import CONF_EMAIL, CONF_SYSTEM_ID
 
         # Create an existing entry
         entry = MagicMock()
         entry.data = {CONF_EMAIL: "existing@example.com", CONF_SYSTEM_ID: "sys-001"}
         entry.entry_id = "test-entry-id"
 
-        with patch.object(
-            hass.config_entries, "async_get_entry", return_value=entry
-        ):
+        with patch.object(hass.config_entries, "async_get_entry", return_value=entry):
             from custom_components.quilt_hp.config_flow import QuiltConfigFlow
 
             flow = QuiltConfigFlow()
@@ -1380,7 +1377,7 @@ class TestConfigFlowReauth:
                 flow, "_route_after_login", new_callable=AsyncMock
             ) as mock_route:
                 mock_route.return_value = {"type": "create_entry"}
-                result = await flow.async_step_reauth_confirm(user_input={})
+                await flow.async_step_reauth_confirm(user_input={})
                 mock_route.assert_awaited_once()
 
 
@@ -1394,9 +1391,7 @@ class TestConfigFlowReconfigure:
         flow.hass = hass
         flow.context = {"entry_id": "missing"}
 
-        with patch.object(
-            hass.config_entries, "async_get_entry", return_value=None
-        ):
+        with patch.object(hass.config_entries, "async_get_entry", return_value=None):
             result = await flow.async_step_reconfigure()
             assert result["type"].value == "abort"
 
@@ -1412,9 +1407,7 @@ class TestConfigFlowReconfigure:
         flow.hass = hass
         flow.context = {"entry_id": "test-entry"}
 
-        with patch.object(
-            hass.config_entries, "async_get_entry", return_value=entry
-        ):
+        with patch.object(hass.config_entries, "async_get_entry", return_value=entry):
             result = await flow.async_step_reconfigure()
             assert result["type"].value == "form"
             assert result["step_id"] == "reconfigure"
@@ -1433,9 +1426,7 @@ class TestConfigFlowReconfigure:
         flow.context = {"entry_id": "test-entry"}
 
         with (
-            patch.object(
-                hass.config_entries, "async_get_entry", return_value=entry
-            ),
+            patch.object(hass.config_entries, "async_get_entry", return_value=entry),
             patch("custom_components.quilt_hp.config_flow.QuiltClient") as mock_cls,
             patch("custom_components.quilt_hp.config_flow.HATokenStore"),
         ):
@@ -1450,9 +1441,7 @@ class TestConfigFlowReconfigure:
             client.login = AsyncMock(side_effect=login_otp)
             mock_cls.return_value = client
 
-            result = await flow.async_step_reconfigure(
-                {CONF_EMAIL: "new@example.com"}
-            )
+            result = await flow.async_step_reconfigure({CONF_EMAIL: "new@example.com"})
             assert result["type"].value == "form"
             assert result["step_id"] == "otp"
 
@@ -1469,9 +1458,7 @@ class TestConfigFlowReconfigure:
         flow.context = {"entry_id": "test-entry"}
 
         with (
-            patch.object(
-                hass.config_entries, "async_get_entry", return_value=entry
-            ),
+            patch.object(hass.config_entries, "async_get_entry", return_value=entry),
             patch("custom_components.quilt_hp.config_flow.QuiltClient") as mock_cls,
             patch("custom_components.quilt_hp.config_flow.HATokenStore"),
         ):
@@ -1486,9 +1473,7 @@ class TestConfigFlowReconfigure:
                 "async_update_reload_and_abort",
             ) as mock_update:
                 mock_update.return_value = {"type": "abort"}
-                result = await flow.async_step_reconfigure(
-                    {CONF_EMAIL: "new@example.com"}
-                )
+                await flow.async_step_reconfigure({CONF_EMAIL: "new@example.com"})
                 mock_update.assert_called_once()
 
     async def test_reconfigure_login_error(self, hass: HomeAssistant) -> None:
@@ -1506,9 +1491,7 @@ class TestConfigFlowReconfigure:
         flow.context = {"entry_id": "test-entry"}
 
         with (
-            patch.object(
-                hass.config_entries, "async_get_entry", return_value=entry
-            ),
+            patch.object(hass.config_entries, "async_get_entry", return_value=entry),
             patch("custom_components.quilt_hp.config_flow.QuiltClient") as mock_cls,
             patch("custom_components.quilt_hp.config_flow.HATokenStore"),
         ):
@@ -1518,9 +1501,7 @@ class TestConfigFlowReconfigure:
             client.login = AsyncMock(side_effect=QuiltAuthError("no"))
             mock_cls.return_value = client
 
-            result = await flow.async_step_reconfigure(
-                {CONF_EMAIL: "new@example.com"}
-            )
+            result = await flow.async_step_reconfigure({CONF_EMAIL: "new@example.com"})
             assert result["type"].value == "form"
             assert result["errors"]["base"] == "cannot_connect"
 

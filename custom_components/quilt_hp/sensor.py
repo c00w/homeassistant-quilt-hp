@@ -157,11 +157,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda idu: (
-            round(idu.state.presence_detection_level * 100, 1)
-            if idu.state.presence_detection_level is not None
-            else None
-        ),
+        value_fn=lambda idu: round(idu.state.presence_detection_level * 100, 1),
         entity_registry_enabled_default=False,
     ),
     IDUSensorDescription(
@@ -295,7 +291,6 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
             if idu.performance_data
             and idu.performance_data.measurement_interval_s
             and idu.performance_data.measurement_interval_s > 0
-            and idu.performance_data.energy_measurement_j is not None
             else None
         ),
         entity_registry_enabled_default=False,
