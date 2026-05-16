@@ -32,6 +32,9 @@ from .utils import normalize_temperature
 
 _LOGGER = logging.getLogger(__name__)
 
+# Limit concurrent updates to avoid overwhelming the device
+PARALLEL_UPDATES = 1
+
 # ── Mode maps ─────────────────────────────────────────────────────────────────
 
 _Q_TO_HA: dict[QHVACMode, HVACMode] = {

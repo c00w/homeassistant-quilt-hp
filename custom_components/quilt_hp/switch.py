@@ -21,6 +21,9 @@ from .entity import QuiltEntity, location_device_info
 if TYPE_CHECKING:
     from . import QuiltConfigEntry
 
+# Limit concurrent updates to avoid overwhelming the device
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     _hass: HomeAssistant,
@@ -45,7 +48,7 @@ class QuiltScheduleSwitch(QuiltEntity, SwitchEntity):
     """
 
     _attr_device_class: SwitchDeviceClass = SwitchDeviceClass.SWITCH
-    _attr_name: str | None = "Schedules"
+    _attr_translation_key = "schedules"
     _attr_icon: str = "mdi:calendar-clock"
 
     def __init__(self, coordinator: QuiltCoordinator, location_id: str) -> None:

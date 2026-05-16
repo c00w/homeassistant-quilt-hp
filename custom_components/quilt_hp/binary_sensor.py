@@ -18,6 +18,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from quilt_hp.models.controller import Controller
@@ -74,6 +75,7 @@ IDU_BINARY_SENSOR_DESCRIPTIONS: tuple[IDUBinarySensorDescription, ...] = (
         key="online",
         name="Online",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: idu.is_online,
         available_fn=lambda _: True,
         entity_registry_enabled_default=False,
@@ -95,6 +97,7 @@ CONTROLLER_BINARY_SENSOR_DESCRIPTIONS: tuple[ControllerBinarySensorDescription, 
         key="online",
         name="Online",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda ctrl: ctrl.is_online,
         entity_registry_enabled_default=False,
     ),

@@ -26,15 +26,28 @@
       "reauth_confirm": {
         "title": "Re-authenticate Quilt",
         "description": "Your Quilt session for {email} has expired. Click submit to receive a new passcode."
+      },
+      "reconfigure": {
+        "title": "Reconfigure Quilt",
+        "description": "Update your Quilt email address or re-authenticate. A passcode will be sent to the email you provide.",
+        "data": {
+          "email": "Email address"
+        }
       }
     },
     "error": {
       "cannot_connect": "Unable to connect to the Quilt cloud. Check your internet connection and try again.",
       "invalid_auth": "Invalid passcode. Please check the code and try again.",
-      "unknown": "An unexpected error occurred."
+      "invalid_email": "This email address is not registered with Quilt. Please check your email or sign up at the Quilt app.",
+      "otp_expired": "This passcode has expired. Please request a new one.",
+      "network_error": "Network error. Check your internet connection and try again.",
+      "api_error": "An error occurred communicating with the Quilt cloud. Please try again later.",
+      "unknown": "An unexpected error occurred.",
+      "reconfigure_failed": "Reconfiguration failed. Please try again."
     },
     "abort": {
-      "already_configured": "This Quilt home is already configured."
+      "already_configured": "This Quilt home is already configured.",
+      "reconfigure_successful": "Reconfiguration successful. Your integration has been updated."
     }
   },
   "options": {
@@ -63,6 +76,36 @@
           "fixed": "Fixed",
           "auto": "Auto"
         }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "energy_today": {
+        "name": "Energy today"
+      }
+    },
+    "switch": {
+      "schedules": {
+        "name": "Schedules"
+      }
+    },
+    "select": {
+      "louver_mode": {
+        "name": "Louver mode"
+      },
+      "louver_angle": {
+        "name": "Louver angle"
+      }
+    },
+    "light": {
+      "led": {
+        "name": "LED"
+      }
+    },
+    "fan": {
+      "fan": {
+        "name": "Fan"
       }
     }
   }

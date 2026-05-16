@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     from . import QuiltConfigEntry
 from .entity import QuiltEntity, idu_device_info
 
+# Limit concurrent updates to avoid overwhelming the device
+PARALLEL_UPDATES = 1
+
 # Map FanSpeed → percentage (for HA's 0-100 speed model).
 # AUTO maps to 0 % (no explicit setpoint).
 _FAN_TO_PCT: dict[FanSpeed, int] = {
@@ -88,7 +91,6 @@ class QuiltFanEntity(QuiltEntity, FanEntity):
         super().__init__(coordinator)
         self._idu_id: str = idu_id
         self._attr_unique_id: str = f"quilt_idu_fan_{idu_id}"
-        self._attr_name: str | None = "Fan"
         self._attr_preset_modes: list[str] = list(_PRESET_TO_FAN.keys())
         # Cache the last explicit (non-AUTO) speed for restore on turn_on.
         self._last_explicit_speed: FanSpeed = FanSpeed.LOW

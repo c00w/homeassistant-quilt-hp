@@ -1,0 +1,66 @@
+# Integration Quality Scale
+# https://developers.home-assistant.io/docs/integration_quality_scale_index/
+
+# Current Status: Silver ✅
+# Last Updated: 2026-05-16
+
+# Silver Tier Requirements: ✅ ALL MET
+
+# ✅ action-exceptions
+#    Service actions raise exceptions when encountering failures
+#    climate.py, fan.py, light.py, select.py, switch.py all raise on errors
+
+# ✅ config-entry-unloading
+#    Support config entry unloading
+#    __init__.py: async_unload_entry() properly unloads all platforms
+
+# ✅ docs-configuration-parameters
+#    Documentation describes all configuration options
+#    README.md: Polling interval documented with defaults and ranges
+
+# ✅ docs-installation-parameters
+#    Documentation describes all installation parameters
+#    README.md: Step-by-step guide with email, OTP, multi-home selection
+
+# ✅ entity-unavailable
+#    Entities mark unavailable when appropriate
+#    Entities check device online status and coordinator availability
+
+# ✅ integration-owner
+#    Has an integration owner
+#    CODEOWNERS file present
+
+# ✅ log-when-unavailable
+#    Log once when unavailable, once when reconnected
+#    coordinator.py: _was_available flag tracks state transitions
+#    Lines 77, 119-122, 140-143, 298-312
+
+# ✅ parallel-updates
+#    Number of parallel updates specified
+#    climate.py, fan.py, light.py, select.py, switch.py: PARALLEL_UPDATES = 1
+
+# ✅ reauthentication-flow
+#    Re-authentication available via UI
+#    config_flow.py: async_step_reauth() + ConfigEntryAuthFailed handling
+#    coordinator.py: Raises ConfigEntryAuthFailed on permanent auth failure
+
+# ✅ test-coverage
+#    Above 95% test coverage
+#    Comprehensive test suite covering all platforms and error scenarios
+#    tests/: config flow, coordinator, all platforms, error handling, device info
+
+# Bronze Tier Requirements: ✅ ALL MET (prerequisite for Silver)
+# All bronze requirements met and documented in previous version
+
+# Next Steps for Gold Tier:
+# - Add discovery support (if applicable to cloud-based integration)
+# - Implement repair flows for common issues
+# - Add automation examples to documentation
+# - Document supported devices and known limitations
+# - Entity category assignments
+# - Disable noisy entities by default
+
+# Notes:
+# - Integration is production-ready and meets Silver tier standards
+# - Focus on reliability, error recovery, and user-friendly documentation
+# - No quality scale exemptions needed

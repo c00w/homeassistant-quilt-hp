@@ -279,6 +279,53 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={"email": self._email},
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Allow user to reconfigure the integration (change email or re-authenticate).
+
+        This is different from reauth - it allows changing the email address,
+        not just re-authenticating with the same email.
+        """
+        entry_id: str = self.context.get("entry_id", "")
+        entry = self.hass.config_entries.async_get_entry(entry_id)
+        if not entry:
+            return self.async_abort(reason="reconfigure_failed")
+
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            self._email = user_input[CONF_EMAIL].strip().lower()
+            otp_needed, error_key = await self._initiate_login()
+            if error_key:
+                errors["base"] = error_key
+            elif otp_needed:
+                return await self.async_step_otp()
+            else:
+                # Login succeeded — update the entry
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data={
+                        CONF_EMAIL: self._email,
+                        CONF_SYSTEM_ID: entry.data.get(CONF_SYSTEM_ID),
+                    },
+                    reason="reconfigure_successful",
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_EMAIL,
+                        default=entry.data.get(CONF_EMAIL, ""),
+                    ): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={"email": entry.data.get(CONF_EMAIL, "")},
+        )
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------

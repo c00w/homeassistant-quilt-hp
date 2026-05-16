@@ -3,8 +3,31 @@
 ## [Unreleased]
 
 ### Added
+- **Entity category assignments (Gold tier)**: Diagnostic sensors now properly categorized
+  - Battery, signal strength, online status → DIAGNOSTIC
+  - Performance metrics (COP, RPM, pressures, etc.) → DIAGNOSTIC
+  - Radar/ALS sensors → DIAGNOSTIC
+  - WiFi/PCB diagnostics → DIAGNOSTIC
+  - Primary sensors (temperature, humidity, power) remain uncategorized for dashboard prominence
+- **Silver tier compliance**: Integration now meets Home Assistant Silver tier requirements
+  - Smart connection state logging (log once on loss, once on restore)
+  - PARALLEL_UPDATES constants to prevent overwhelming devices
+  - Comprehensive documentation with troubleshooting guide
+  - Enhanced configuration and installation instructions
+- **Reconfigure step** in config flow to allow changing email or re-authenticating without removing integration
+- **Entity translations**: All entity names now use translation_key for better internationalization support
+- **Error handling improvements**: Added ConfigEntryAuthFailed exception for automatic reauth flow
+- **Quality scale documentation**: Added quality_scale.yaml documenting Bronze tier compliance
+- **Comprehensive error tests**: Added test_error_handling.py with tests for auth failures, stream errors, and network issues
+- More specific error messages in config flow (network_error, invalid_email, otp_expired, api_error)
 - README banner image (`images/banner.svg`) and top-of-page banner block
 - README link to `quilt-hp-python` docs for protocol, streaming, and feature details
+
+### Changed
+- **Device naming improved** to follow Home Assistant best practices. Indoor unit devices now use their configured name (e.g., "Living Room IDU") instead of just the room name, eliminating confusion between device names and area names. Outdoor units now include serial numbers when available for better identification.
+- Removed duplicate `_attr_name` settings in favor of `_attr_translation_key` for consistent i18n
+- Stream error logging changed from WARNING on every error to single WARNING on loss + single INFO on restore
+- Polling fallback now logs connection state transitions instead of every failure
 
 ## [0.2.0] - 2026-05-13
 

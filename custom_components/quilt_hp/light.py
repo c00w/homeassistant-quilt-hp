@@ -25,6 +25,9 @@ if TYPE_CHECKING:
     from . import QuiltConfigEntry
 from .entity import QuiltEntity, idu_device_info
 
+# Limit concurrent updates to avoid overwhelming the device
+PARALLEL_UPDATES = 1
+
 
 def _encode_rgbw(r: int, g: int, b: int, w: int) -> int:
     """Pack RGBW bytes into Quilt's int32 color code (0xRRGGBBWW)."""
@@ -70,7 +73,7 @@ class QuiltLightEntity(QuiltEntity, LightEntity):
     """Light entity representing an indoor unit's LED light."""
 
     _attr_color_mode: ColorMode = ColorMode.RGBW
-    _attr_translation_key: str = "light"
+    _attr_translation_key: str = "led"
     _attr_supported_features: LightEntityFeature = LightEntityFeature.EFFECT
 
     def __init__(self, coordinator: QuiltCoordinator, idu_id: str) -> None:
@@ -78,7 +81,6 @@ class QuiltLightEntity(QuiltEntity, LightEntity):
         super().__init__(coordinator)
         self._idu_id: str = idu_id
         self._attr_unique_id: str = f"quilt_idu_light_{idu_id}"
-        self._attr_name: str | None = "LED"
         self._attr_supported_color_modes: set[ColorMode] = {ColorMode.RGBW}
 
     @property

@@ -40,6 +40,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from quilt_hp.models.controller import Controller
@@ -118,6 +119,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         name="Fan Speed",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: idu.state.fan_speed_rpm,
     ),
     IDUSensorDescription(
@@ -125,6 +127,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         name="Fan Speed Setpoint",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: idu.state.fan_speed_setpoint_rpm,
         entity_registry_enabled_default=False,
     ),
@@ -134,6 +137,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: _normalize_temperature(idu.state.inlet_temperature_c),
         entity_registry_enabled_default=False,
     ),
@@ -143,6 +147,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: _normalize_temperature(idu.state.outlet_temperature_c),
         entity_registry_enabled_default=False,
     ),
@@ -151,6 +156,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         name="Presence Level",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: round(idu.state.presence_detection_level * 100, 1),
         entity_registry_enabled_default=False,
     ),
@@ -160,6 +166,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: (
             idu.performance_metrics.capacity_w if idu.performance_metrics else None
         ),
@@ -171,6 +178,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: (
             idu.performance_metrics.hvac_power_w if idu.performance_metrics else None
         ),
@@ -182,6 +190,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: (
             idu.performance_metrics.led_power_w if idu.performance_metrics else None
         ),
@@ -191,6 +200,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         key="coefficient_of_performance",
         name="COP",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: (
             round(idu.performance_metrics.coefficient_of_performance, 2)
             if idu.performance_metrics
@@ -204,6 +214,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: _normalize_temperature(
             idu.state.calculated_ambient_temperature_c
         ),
@@ -216,6 +227,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: (
             _normalize_temperature(idu.performance_data.coil_temperature_c)
             if idu.performance_data
@@ -229,6 +241,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: (
             _normalize_temperature(idu.performance_data.gas_pipe_temperature_c)
             if idu.performance_data
@@ -242,6 +255,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: (
             _normalize_temperature(idu.performance_data.liquid_pipe_temperature_c)
             if idu.performance_data
@@ -255,6 +269,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.HUMIDITY,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: (
             idu.performance_data.inlet_humidity_pct if idu.performance_data else None
         ),
@@ -266,6 +281,7 @@ IDU_SENSOR_DESCRIPTIONS: tuple[IDUSensorDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda idu: (
             round(
                 idu.performance_data.energy_measurement_j
@@ -293,6 +309,7 @@ QSM_SENSOR_DESCRIPTIONS: tuple[QSMSensorDescription, ...] = (
         key="phase_detected_raw",
         name="Motion Signal",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda qsm: qsm.sensors.phase_detected_raw if qsm.sensors else None,
         entity_registry_enabled_default=False,
     ),
@@ -300,6 +317,7 @@ QSM_SENSOR_DESCRIPTIONS: tuple[QSMSensorDescription, ...] = (
         key="target_detected_raw",
         name="Presence Signal",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda qsm: qsm.sensors.target_detected_raw if qsm.sensors else None,
         entity_registry_enabled_default=False,
     ),
@@ -309,6 +327,7 @@ QSM_SENSOR_DESCRIPTIONS: tuple[QSMSensorDescription, ...] = (
         device_class=SensorDeviceClass.ILLUMINANCE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=LIGHT_LUX,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda qsm: qsm.sensors.als_illuminance_raw if qsm.sensors else None,
         entity_registry_enabled_default=False,
     ),
@@ -333,6 +352,7 @@ ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        # Primary sensor - no category
         value_fn=lambda odu: (
             _normalize_temperature(odu.performance_data.ambient_temperature_c)
             if odu.performance_data
@@ -345,6 +365,7 @@ ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda odu: (
             _normalize_temperature(odu.performance_data.coil_temperature_c)
             if odu.performance_data
@@ -358,6 +379,7 @@ ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda odu: (
             _normalize_temperature(odu.performance_data.exhaust_temperature_c)
             if odu.performance_data
@@ -371,6 +393,7 @@ ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
         device_class=SensorDeviceClass.FREQUENCY,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfFrequency.HERTZ,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda odu: (
             odu.performance_data.compressor_frequency_hz
             if odu.performance_data
@@ -384,6 +407,7 @@ ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
         device_class=SensorDeviceClass.PRESSURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPressure.KPA,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda odu: (
             odu.performance_data.high_pressure_kpa if odu.performance_data else None
         ),
@@ -395,6 +419,7 @@ ODU_SENSOR_DESCRIPTIONS: tuple[ODUSensorDescription, ...] = (
         device_class=SensorDeviceClass.PRESSURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPressure.KPA,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda odu: (
             odu.performance_data.low_pressure_kpa if odu.performance_data else None
         ),
@@ -419,6 +444,7 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        # Primary sensor - no category
         value_fn=lambda ctrl: _normalize_temperature(ctrl.ambient_temperature_c),
     ),
     ControllerSensorDescription(
@@ -427,6 +453,7 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda ctrl: _normalize_temperature(ctrl.pcb_temperature_a_c),
         entity_registry_enabled_default=False,
     ),
@@ -436,6 +463,7 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda ctrl: _normalize_temperature(ctrl.pcb_temperature_b_c),
         entity_registry_enabled_default=False,
     ),
@@ -445,6 +473,7 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda ctrl: _normalize_temperature(ctrl.calibrated_ambient_c),
         entity_registry_enabled_default=False,
     ),
@@ -454,6 +483,7 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         device_class=SensorDeviceClass.SIGNAL_STRENGTH,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="dBm",
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda ctrl: ctrl.wifi_signal_dbm,
         entity_registry_enabled_default=False,
     ),
@@ -463,6 +493,7 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         device_class=SensorDeviceClass.FREQUENCY,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfFrequency.MEGAHERTZ,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda ctrl: ctrl.wifi_freq_mhz,
         available_fn=lambda ctrl: ctrl.is_online and ctrl.wifi_freq_mhz is not None,
         entity_registry_enabled_default=False,
@@ -485,6 +516,7 @@ REMOTE_SENSOR_DESCRIPTIONS: tuple[RemoteSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        # Primary sensor - no category
         value_fn=lambda rs: _normalize_temperature(rs.ambient_temperature_c),
     ),
     RemoteSensorDescription(
@@ -493,6 +525,7 @@ REMOTE_SENSOR_DESCRIPTIONS: tuple[RemoteSensorDescription, ...] = (
         device_class=SensorDeviceClass.HUMIDITY,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
+        # Primary sensor - no category
         value_fn=lambda rs: rs.humidity_percent,
     ),
     RemoteSensorDescription(
@@ -501,6 +534,7 @@ REMOTE_SENSOR_DESCRIPTIONS: tuple[RemoteSensorDescription, ...] = (
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda rs: rs.battery_level_percent,
     ),
     RemoteSensorDescription(
@@ -509,6 +543,7 @@ REMOTE_SENSOR_DESCRIPTIONS: tuple[RemoteSensorDescription, ...] = (
         device_class=SensorDeviceClass.SIGNAL_STRENGTH,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="dBm",
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda rs: rs.signal_level_dbm,
         entity_registry_enabled_default=False,
     ),
@@ -530,6 +565,7 @@ CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS: tuple[ControllerRemoteSensorDescription, 
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        # Primary sensor - no category
         value_fn=lambda crs: _normalize_temperature(crs.ambient_temperature_c),
     ),
     ControllerRemoteSensorDescription(
@@ -538,6 +574,7 @@ CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS: tuple[ControllerRemoteSensorDescription, 
         device_class=SensorDeviceClass.HUMIDITY,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
+        # Primary sensor - no category
         value_fn=lambda crs: crs.humidity_percent,
     ),
     ControllerRemoteSensorDescription(
@@ -546,6 +583,7 @@ CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS: tuple[ControllerRemoteSensorDescription, 
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda crs: crs.battery_level_percent,
     ),
     ControllerRemoteSensorDescription(
@@ -554,6 +592,7 @@ CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS: tuple[ControllerRemoteSensorDescription, 
         device_class=SensorDeviceClass.SIGNAL_STRENGTH,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="dBm",
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda crs: crs.signal_level_dbm,
         entity_registry_enabled_default=False,
     ),
@@ -923,7 +962,7 @@ class QuiltEnergySensor(QuiltEntity, SensorEntity):
     _attr_device_class: SensorDeviceClass = SensorDeviceClass.ENERGY
     _attr_state_class: SensorStateClass = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement: str = UnitOfEnergy.KILO_WATT_HOUR
-    _attr_name: str | None = "Energy Today"
+    _attr_translation_key = "energy_today"
     _attr_suggested_display_precision: int = 3
 
     def __init__(

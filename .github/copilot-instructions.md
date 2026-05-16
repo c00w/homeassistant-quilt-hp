@@ -126,7 +126,7 @@ All entity classes inherit from `QuiltEntity(CoordinatorEntity[QuiltCoordinator]
 
 **Device grouping in HA UI:**
 
-- IDU + its QSM → one HA device named after the Space (room)
+- IDU + its QSM → one HA device named after the device's configured name (e.g., "Living Room IDU") or with fallback pattern "{space} Indoor Unit"
 - ODU → separate device with `via_device` pointing to the IDU in the same space
 - Controller (Dial) → separate device with `via_device` pointing to the IDU in the same space
 - Spaces are NOT HA devices; they surface as areas via `suggested_area`

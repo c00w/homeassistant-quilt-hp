@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     from . import QuiltConfigEntry
 from .entity import QuiltEntity, idu_device_info
 
+# Limit concurrent updates to avoid overwhelming the device
+PARALLEL_UPDATES = 1
+
 _LOUVER_MODE_OPTIONS: list[str] = ["closed", "sweep", "fixed", "auto"]
 
 _STR_TO_LOUVER_MODE: dict[str, LouverMode] = {
@@ -31,13 +34,13 @@ _LOUVER_MODE_TO_STR: dict[LouverMode, str] = {
     v: k for k, v in _STR_TO_LOUVER_MODE.items()
 }
 
-# Option strings are the human-readable labels from LouverAngle.label so the
+# Option strings are the human-readable names from LouverAngle.name so the
 # HA UI shows them directly without needing a separate translation lookup.
-_LOUVER_ANGLE_OPTIONS: list[str] = [a.label for a in LouverAngle]
+_LOUVER_ANGLE_OPTIONS: list[str] = [a.name for a in LouverAngle]
 
-_LABEL_TO_LOUVER_ANGLE: dict[str, LouverAngle] = {a.label: a for a in LouverAngle}
+_NAME_TO_LOUVER_ANGLE: dict[str, LouverAngle] = {a.name: a for a in LouverAngle}
 
-_LOUVER_ANGLE_TO_LABEL: dict[LouverAngle, str] = {a: a.label for a in LouverAngle}
+_LOUVER_ANGLE_TO_NAME: dict[LouverAngle, str] = {a: a.name for a in LouverAngle}
 
 
 async def async_setup_entry(
@@ -67,7 +70,6 @@ class QuiltLouverModeSelect(QuiltEntity, SelectEntity):
         super().__init__(coordinator)
         self._idu_id: str = idu_id
         self._attr_unique_id: str = f"quilt_idu_louver_mode_{idu_id}"
-        self._attr_name: str | None = "Louver Mode"
 
     @property
     def _idu(self) -> IndoorUnit:
@@ -101,13 +103,13 @@ class QuiltLouverAngleSelect(QuiltEntity, SelectEntity):
     """Select entity for indoor unit louver angle (relevant when mode=FIXED)."""
 
     _attr_options: list[str] = _LOUVER_ANGLE_OPTIONS
+    _attr_translation_key = "louver_angle"
 
     def __init__(self, coordinator: QuiltCoordinator, idu_id: str) -> None:
         """Initialize the louver angle select entity."""
         super().__init__(coordinator)
         self._idu_id: str = idu_id
         self._attr_unique_id: str = f"quilt_idu_louver_angle_{idu_id}"
-        self._attr_name: str | None = "Louver Angle"
 
     @property
     def _idu(self) -> IndoorUnit:
@@ -129,11 +131,11 @@ class QuiltLouverAngleSelect(QuiltEntity, SelectEntity):
     @override
     def current_option(self) -> str | None:
         angle = LouverAngle.from_wire(self._idu.controls.louver_fixed_position)
-        return _LOUVER_ANGLE_TO_LABEL.get(angle)
+        return _LOUVER_ANGLE_TO_NAME.get(angle)
 
     @override
     async def async_select_option(self, option: str) -> None:
-        angle = _LABEL_TO_LOUVER_ANGLE[option]
+        angle = _NAME_TO_LOUVER_ANGLE[option]
         await self.coordinator.async_set_indoor_unit(
             self._idu,
             louver_mode=LouverMode.FIXED,

@@ -50,11 +50,20 @@ class QuiltEntity(CoordinatorEntity[QuiltCoordinator]):
 def idu_device_info(idu: IndoorUnit, space: Space | None = None) -> DeviceInfo:
     """Build a ``DeviceInfo`` for an IDU and its embedded QSM.
 
-    The device is named after the room (Space) it serves, matching how the
-    Quilt app presents it.
+    The device is named using the IDU's configured name (from idu.settings.name)
+    or a descriptive fallback pattern. This ensures the device name identifies the
+    physical hardware rather than just duplicating the area name.
+
     Spaces are not HA devices; they are surfaced as areas via ``suggested_area``.
     """
-    name = space.name if space else (idu.settings.name or f"IDU {idu.id[:8]}")
+    # Use device's configured name, or construct a descriptive name
+    if idu.settings.name:
+        name = idu.settings.name
+    elif space is not None:
+        name = f"{space.name} Indoor Unit"
+    else:
+        name = f"Indoor Unit {idu.id[:8]}"
+
     info = DeviceInfo(
         identifiers={(DOMAIN, f"i_{idu.id}")},
         name=name,
@@ -69,17 +78,22 @@ def idu_device_info(idu: IndoorUnit, space: Space | None = None) -> DeviceInfo:
 def odu_device_info(odu: OutdoorUnit, idu: IndoorUnit | None = None) -> DeviceInfo:
     """Build a ``DeviceInfo`` for an outdoor unit.
 
+    Uses the serial number when available to create a more identifiable device name.
     The ODU is linked to the IDU in the same space so HA groups them
     correctly in the UI.
     """
+    # Use serial number for better identification if available
+    serial = _clean(odu.serial_number)
+    name = f"Outdoor Unit {serial}" if serial else f"Outdoor Unit {odu.id[:8]}"
+
     info = DeviceInfo(
         identifiers={(DOMAIN, f"u_{odu.id}")},
-        name=f"Outdoor Unit {odu.id[:8]}",
+        name=name,
         manufacturer=_MANUFACTURER,
         model=_clean(odu.model_sku) or "Outdoor Unit",
     )
-    if _clean(odu.serial_number):
-        info["serial_number"] = odu.serial_number
+    if serial:
+        info["serial_number"] = serial
     if _clean(odu.firmware_version):
         info["sw_version"] = odu.firmware_version
     if idu is not None:
@@ -113,10 +127,14 @@ def controller_device_info(
 def remote_sensor_device_info(
     rs: RemoteSensor, idu: IndoorUnit | None = None
 ) -> DeviceInfo:
-    """Build a ``DeviceInfo`` for a Quilt remote sensor (IDU-paired wireless sensor)."""
+    """Build a ``DeviceInfo`` for a Quilt remote sensor (IDU-paired wireless sensor).
+
+    Uses a unique identifier to distinguish multiple sensors.
+    """
+    name = f"Remote Sensor {rs.id[:8]}"
     info = DeviceInfo(
         identifiers={(DOMAIN, f"rs_{rs.id}")},
-        name="Remote Sensor",
+        name=name,
         manufacturer=_MANUFACTURER,
         model="Remote Sensor",
     )
@@ -128,10 +146,18 @@ def remote_sensor_device_info(
 def ctrl_remote_sensor_device_info(
     crs: ControllerRemoteSensor, ctrl: Controller | None = None
 ) -> DeviceInfo:
-    """Build a ``DeviceInfo`` for a Quilt controller remote sensor (Dial-paired)."""
+    """Build a ``DeviceInfo`` for a Quilt controller remote sensor (Dial-paired).
+
+    Includes controller context when available for better identification.
+    """
+    if ctrl and ctrl.name:
+        name = f"{ctrl.name} Zone Sensor"
+    else:
+        name = f"Zone Sensor {crs.id[:8]}"
+
     info = DeviceInfo(
         identifiers={(DOMAIN, f"crs_{crs.id}")},
-        name="Zone Sensor",
+        name=name,
         manufacturer=_MANUFACTURER,
         model="Zone Sensor",
     )

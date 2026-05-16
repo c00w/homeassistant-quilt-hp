@@ -35,6 +35,8 @@ For protocol details, streaming behavior, and the full client feature set, see t
 
 ## Installation
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=eman&repository=homeassistant-quilt-hp)
+
 ### HACS (recommended)
 
 1. Add this repository as a custom repository in HACS
@@ -49,33 +51,98 @@ and restart.
 
 ## Configuration
 
-### Initial setup
+### Initial Setup
 
-1. Go to **Settings → Devices & Services → Add Integration** and search for *Quilt*.
-2. Enter your Quilt account email address. Quilt will send a one-time passcode (OTP).
-3. Enter the OTP to complete authentication.
+1. Navigate to **Settings** → **Devices & Services** in Home Assistant
+2. Click **+ Add Integration** and search for **"Quilt"**
+3. Enter your Quilt account email address
+4. Check your email for a 6-digit verification code (arrives within 1-2 minutes)
+5. Enter the code in Home Assistant
+
+**Note:** Verification codes expire after 15 minutes. Request a new code if needed.
 
 If your account has **multiple homes**, you will be prompted to select which one to
 integrate. Each home can be added as a separate integration entry — just run the setup
 flow again and select a different home.
 
-### Options
+### Configuration Options
 
-After setup, click **Configure** on the integration card to adjust:
+After setup, click **Configure** on the integration card to adjust settings:
 
 | Option | Default | Range | Description |
 |---|---|---|---|
-| Polling interval | 5 min | 1–60 min | How often to fall back to polling if the real-time stream is unavailable |
+| **Polling interval** | 5 min | 1–60 min | Fallback polling frequency when real-time stream is unavailable |
+
+**About real-time updates:** The integration uses gRPC streaming for instant state changes.
+The polling interval is only used as a fallback when the stream is temporarily down.
+
+### Reconfiguration
+
+To change your email or re-authenticate without removing the integration:
+
+1. Go to **Settings** → **Devices & Services**
+2. Find your Quilt integration
+3. Click **⋮** (three dots menu) → **Reconfigure**
+4. Follow the authentication steps
 
 ### Re-authentication
 
-If your session expires, HA will raise a re-authentication notification. Follow the
-prompt to re-enter your email and a new OTP. No other settings are changed.
+If your session expires, Home Assistant will display a re-authentication notification.
+Click the notification and follow the prompts to re-enter your email and a new
+verification code. Your devices and settings remain unchanged.
+
+## Troubleshooting
+
+### "Cannot connect" Error During Setup
+- **Check internet connection:** Verify your Home Assistant instance can access the internet
+- **Verify Quilt cloud status:** Ensure the Quilt cloud service is online
+- **Network/firewall:** Confirm gRPC traffic (HTTPS port 443) is not blocked
+- **Temporary outage:** Wait 2-3 minutes and try again
+
+### "Invalid passcode" Error
+- **Double-check digits:** Ensure all 6 digits were entered correctly
+- **Code expired:** Codes expire after 15 minutes - request a new one
+- **Email delays:** Check spam/junk folder if code doesn't arrive within 2 minutes
+- **Resend:** Start the setup again to receive a new code
+
+### Connection Lost / Stream Degraded Warning
+If you see a repair notification about stream degradation:
+- The integration automatically falls back to polling every 5 minutes
+- State updates may be delayed but will continue working
+- The stream reconnects automatically when connectivity is restored
+- **Action:** Check your internet connection; no manual intervention required
+
+### Entities Show as "Unavailable"
+- **Device offline:** Verify your Quilt indoor unit has power and WiFi connection
+- **Recent setup:** Allow 1-2 minutes after initial setup for devices to come online
+- **Cloud connection:** Check that the Quilt app works on your phone
+- **Reload integration:** Try reloading from **Devices & Services**
+
+### Integration Won't Load / Setup Fails
+1. **Check logs:** Go to **Settings** → **System** → **Logs**, search for "quilt"
+2. **Re-authenticate:** Remove and re-add the integration
+3. **Restart Home Assistant:** Sometimes resolves temporary issues
+4. **Report issue:** File a bug report on GitHub with relevant log entries
+
+### Debugging
+
+To enable debug logging, add to `configuration.yaml`:
+
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.quilt_hp: debug
+```
+
+Then restart Home Assistant and check **Settings** → **System** → **Logs** for detailed information.
 
 ## Entities
 
 The following entities are created per device. Entities marked *Disabled* are off by
 default to reduce noise; enable them individually in the HA entity registry.
+
+**Device Naming:** Indoor unit devices are named using their configured name (e.g., "Living Room IDU") or a fallback pattern like "{Room} Indoor Unit". This ensures device names clearly identify the physical hardware while the room is assigned as the area.
 
 ### Per location (home)
 

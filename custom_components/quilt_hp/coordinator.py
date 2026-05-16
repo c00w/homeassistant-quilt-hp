@@ -10,6 +10,7 @@ from typing import Any, override
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.issue_registry import (
     IssueSeverity,
     async_create_issue,
@@ -73,6 +74,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         self._system_id: str | None = system_id  # None → library picks default
         self._stream: Any = None  # Using Any for stream due to dynamic library types
         self._stream_error_count: int = 0
+        self._was_available: bool = True  # Track connection state for logging
         self.spaces_by_id: dict[str, Space] = {}
         self.idu_by_id: dict[str, IndoorUnit] = {}
         self.idu_by_space_id: dict[str, IndoorUnit] = {}
@@ -113,8 +115,13 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
 
     def _on_stream_error(self, err: object) -> None:
         """Handle a stream error, surfacing a repair issue after repeated failures."""
+        # Log once when stream becomes unavailable
+        if self._stream_error_count == 0 and self._was_available:
+            _LOGGER.warning("Quilt stream connection lost: %s", err)
+            self._was_available = False
+
         self._stream_error_count += 1
-        _LOGGER.warning(
+        _LOGGER.debug(
             "Quilt stream error (%d); will reconnect: %s",
             self._stream_error_count,
             err,
@@ -132,6 +139,10 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
     def _on_stream_reconnect(self) -> None:
         """Clear the stream error counter and resolve any open repair issue."""
         if self._stream_error_count > 0:
+            # Log once when stream is restored
+            if not self._was_available:
+                _LOGGER.info("Quilt stream connection restored")
+                self._was_available = True
             self._stream_error_count = 0
             async_delete_issue(self.hass, DOMAIN, _ISSUE_STREAM_DEGRADED)
 
@@ -284,8 +295,19 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
             snapshot = await self._client.get_snapshot(  # type: ignore[no-any-return]
                 system_id=self._system_id
             )
+
+            # Log once when connection is restored
+            if not self._was_available:
+                _LOGGER.info("Quilt connection restored")
+                self._was_available = True
+
         except Exception as err:
+            # Log once when connection is lost
+            if self._was_available:
+                _LOGGER.warning("Quilt connection lost: %s", err)
+                self._was_available = False
             raise UpdateFailed(f"Error fetching Quilt snapshot: {err}") from err
+
         await self._async_update_energy()
         return snapshot  # type: ignore[no-any-return]
 
@@ -316,6 +338,9 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         expired-JWT errors by inspecting the message text.  If the upstream
         library ever exposes a dedicated exception class or error code for auth
         failures, replace this string check with a type/code check.
+
+        Raises ``ConfigEntryAuthFailed`` if the re-login attempt fails,
+        triggering HA's reauth flow automatically.
         """
         try:
             return await operation()
@@ -323,5 +348,13 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
             if "jwt is expired" not in str(err).lower():
                 raise
 
-        await self._client.login()
+        # Token expired — attempt re-login once
+        try:
+            await self._client.login()
+        except QuiltError as auth_err:
+            _LOGGER.error("Quilt re-authentication failed: %s", auth_err)
+            raise ConfigEntryAuthFailed(
+                "Quilt authentication failed. Please re-authenticate."
+            ) from auth_err
+
         return await operation()
