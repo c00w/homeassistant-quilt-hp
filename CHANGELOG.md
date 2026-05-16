@@ -2,7 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+- `CancelledError` (a `BaseException` in Python 3.11+) now correctly suppressed when cancelling the in-flight login task and when stopping the gRPC stream; previously it propagated and caused unhandled exceptions
+- `coordinator.async_setup()` now closes the API client if stream setup fails, preventing a resource leak
+- Energy window start date now derived from the UTC clock (`now.date()`) instead of `date.today()` (local time), preventing off-by-one errors on servers not running in UTC
+- Config flow home selection now disambiguates duplicate home names with numeric suffixes (e.g. "Home (2)") so users can distinguish between homes with identical names
+- `HATokenStore.load()` now handles malformed persisted data (wrong type, missing keys) gracefully instead of crashing with `TypeError` or `AttributeError`
+- `normalize_temperature()` now handles non-float numeric inputs (e.g. `int`) without raising `TypeError`
+
 ### Added
+- Test coverage raised from 82% to 97% (252 tests)
 - **Entity category assignments (Gold tier)**: Diagnostic sensors now properly categorized
   - Battery, signal strength, online status → DIAGNOSTIC
   - Performance metrics (COP, RPM, pressures, etc.) → DIAGNOSTIC
