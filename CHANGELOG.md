@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-16
+
 ### Fixed
 - `CancelledError` (a `BaseException` in Python 3.11+) now correctly suppressed when cancelling the in-flight login task and when stopping the gRPC stream; previously it propagated and caused unhandled exceptions
 - `coordinator.async_setup()` now closes the API client if stream setup fails, preventing a resource leak
