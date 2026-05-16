@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 import contextlib
-from datetime import UTC, date, datetime, time as dt_time, timedelta
+from datetime import UTC, datetime, time as dt_time, timedelta
 import logging
 from typing import Any, override
 
@@ -193,13 +193,19 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
     async def async_setup(self) -> None:
         """Open gRPC channel, login, fetch initial snapshot, start stream."""
         _ = await self._client.__aenter__()
-        await self._client.login()
+        try:
+            await self._client.login()
 
-        snapshot = await self._client.get_snapshot(system_id=self._system_id)
-        self.async_set_updated_data(snapshot)
+            snapshot = await self._client.get_snapshot(system_id=self._system_id)
+            self.async_set_updated_data(snapshot)
 
-        await self._async_update_energy()
-        await self._start_stream(snapshot)
+            await self._async_update_energy()
+            await self._start_stream(snapshot)
+        except Exception:
+            # Close the client if any setup step fails to avoid resource leaks.
+            with contextlib.suppress(Exception):
+                _ = await self._client.__aexit__(None, None, None)
+            raise
 
     @override
     async def async_shutdown(self) -> None:
@@ -321,7 +327,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         ):
             return
         try:
-            start = datetime.combine(date.today(), dt_time.min, tzinfo=UTC)
+            start = datetime.combine(now.date(), dt_time.min, tzinfo=UTC)
             metrics = await self._client.get_energy(
                 start, now, system_id=self._system_id
             )

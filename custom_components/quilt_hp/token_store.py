@@ -45,7 +45,7 @@ class HATokenStore:
                 refresh_token=entry["refresh_token"],
                 expires_at=entry["expires_at"],
             )
-        except KeyError:
+        except KeyError, TypeError, AttributeError, ValueError:
             _LOGGER.warning("Malformed token cache for %s; will re-authenticate", email)
             return None
 

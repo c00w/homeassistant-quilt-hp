@@ -11,6 +11,11 @@ def normalize_temperature(value: float | None) -> float | None:
     The Quilt API uses ``NaN`` as a sentinel for "no reading available".
     Home Assistant expects ``None`` for unknown numeric sensor values.
     """
-    if value is None or math.isnan(value):
+    if value is None:
+        return None
+    try:
+        if math.isnan(value):
+            return None
+    except TypeError:
         return None
     return value

@@ -204,18 +204,36 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Let the user choose which Quilt home to integrate."""
-        if user_input is not None:
-            chosen_name = user_input[CONF_HOME_NAME]
-            # Look up the system_id for the chosen name.
-            sid = next(
-                (sid for sid, name in self._systems if name == chosen_name), None
-            )
-            return await self._create_entry(system_id=sid, home_name=chosen_name)
+        # Build a display-label → (system_id, name) mapping.  When duplicate
+        # names exist, append a suffix so each label is unique.
+        name_counts: dict[str, int] = {}
+        for _, name in self._systems:
+            name_counts[name] = name_counts.get(name, 0) + 1
 
-        home_names = [name for _, name in self._systems]
+        label_to_system: dict[str, tuple[str, str]] = {}
+        name_seen: dict[str, int] = {}
+        for sid, name in self._systems:
+            if name_counts[name] > 1:
+                idx = name_seen.get(name, 0) + 1
+                name_seen[name] = idx
+                label = f"{name} ({idx})"
+            else:
+                label = name
+            label_to_system[label] = (sid, name)
+
+        if user_input is not None:
+            chosen_label = user_input[CONF_HOME_NAME]
+            chosen_sid: str | None
+            chosen_name: str
+            chosen_sid, chosen_name = label_to_system.get(
+                chosen_label, (None, chosen_label)
+            )
+            return await self._create_entry(system_id=chosen_sid, home_name=chosen_name)
+
+        labels = list(label_to_system.keys())
         return self.async_show_form(
             step_id="home",
-            data_schema=vol.Schema({vol.Required(CONF_HOME_NAME): vol.In(home_names)}),
+            data_schema=vol.Schema({vol.Required(CONF_HOME_NAME): vol.In(labels)}),
             description_placeholders={"count": str(len(self._systems))},
         )
 
