@@ -48,7 +48,7 @@ class QuiltScheduleSwitch(QuiltEntity, SwitchEntity):
     """
 
     _attr_device_class: SwitchDeviceClass = SwitchDeviceClass.SWITCH
-    _attr_translation_key = "schedules"
+    _attr_translation_key: str = "schedules"
     _attr_icon: str = "mdi:calendar-clock"
 
     def __init__(self, coordinator: QuiltCoordinator, location_id: str) -> None:

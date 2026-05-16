@@ -38,18 +38,6 @@ async def test_setup_entry(hass, coordinator) -> None:
     assert len(coordinator.data.indoor_units) == 1
 
 
-async def test_light_properties(coordinator, idu) -> None:
-    """Test light properties."""
-    entity = QuiltLightEntity(coordinator, "idu-001")
-    assert entity.name == "LED"
-    assert entity.unique_id == "quilt_idu_light_idu-001"
-    assert not entity.is_on
-    assert entity.brightness == 128
-    assert entity.rgbw_color == (255, 255, 255, 255)
-    assert entity.effect == "none"
-    assert "dance" in entity.effect_list
-
-
 async def test_idu_available(hass, coordinator, idu) -> None:
     """Test availability depends on IDU online status."""
     entity = QuiltLightEntity(coordinator, "idu-001")

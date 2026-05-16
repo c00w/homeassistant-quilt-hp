@@ -962,7 +962,7 @@ class QuiltEnergySensor(QuiltEntity, SensorEntity):
     _attr_device_class: SensorDeviceClass = SensorDeviceClass.ENERGY
     _attr_state_class: SensorStateClass = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement: str = UnitOfEnergy.KILO_WATT_HOUR
-    _attr_translation_key = "energy_today"
+    _attr_translation_key: str = "energy_today"
     _attr_suggested_display_precision: int = 3
 
     def __init__(

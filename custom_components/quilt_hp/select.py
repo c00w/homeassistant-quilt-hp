@@ -103,7 +103,7 @@ class QuiltLouverAngleSelect(QuiltEntity, SelectEntity):
     """Select entity for indoor unit louver angle (relevant when mode=FIXED)."""
 
     _attr_options: list[str] = _LOUVER_ANGLE_OPTIONS
-    _attr_translation_key = "louver_angle"
+    _attr_translation_key: str = "louver_angle"
 
     def __init__(self, coordinator: QuiltCoordinator, idu_id: str) -> None:
         """Initialize the louver angle select entity."""
