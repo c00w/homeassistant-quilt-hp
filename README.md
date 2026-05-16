@@ -1,4 +1,8 @@
-# Quilt Heat Pump — Home Assistant Integration
+<p align="center">
+  <img src="images/banner.svg" alt="Quilt Home Assistant Integration" width="100%">
+</p>
+
+# Quilt — Home Assistant Integration
 
 [![Validate](https://github.com/eman/homeassistant-quilt-hp/actions/workflows/validate.yml/badge.svg)](https://github.com/eman/homeassistant-quilt-hp/actions/workflows/validate.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/eman/homeassistant-quilt-hp)](https://github.com/eman/homeassistant-quilt-hp/releases)

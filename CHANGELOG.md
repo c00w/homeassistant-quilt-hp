@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- README banner image (`images/banner.svg`) and top-of-page banner block
+
 ## [0.2.0] - 2026-05-13
 
 ### Added

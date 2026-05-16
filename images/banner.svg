@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 400" role="img" aria-labelledby="title desc">
+  <title id="title">Quilt Home Assistant Integration</title>
+  <desc id="desc">Banner image for the Quilt Home Assistant integration.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1426" />
+      <stop offset="100%" stop-color="#1f6feb" />
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="400" fill="url(#bg)" />
+  <circle cx="190" cy="200" r="115" fill="none" stroke="#9cc3ff" stroke-width="20" />
+  <path d="M130 200h120M190 140v120" stroke="#9cc3ff" stroke-width="20" stroke-linecap="round" />
+  <text x="340" y="182" fill="#ffffff" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="70" font-weight="700">
+    Quilt
+  </text>
+  <text x="340" y="255" fill="#dbe8ff" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="42" font-weight="500">
+    Home Assistant Integration
+  </text>
+</svg>
