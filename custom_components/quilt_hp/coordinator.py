@@ -205,7 +205,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
     async def async_shutdown(self) -> None:
         """Stop the stream and close the gRPC channel."""
         if self._stream is not None:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(BaseException):
                 await self._stream.stop()
             self._stream = None
 

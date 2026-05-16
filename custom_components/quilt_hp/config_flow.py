@@ -334,7 +334,7 @@ class QuiltConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Cancel any in-flight login task and close the client."""
         if self._login_task is not None and not self._login_task.done():
             self._login_task.cancel()
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(BaseException):
                 await self._login_task
         self._login_task = None
         self._otp_future = None
