@@ -338,7 +338,9 @@ QSM_SENSOR_DESCRIPTIONS: tuple[QSMSensorDescription, ...] = (
         name="Local Comms Health",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda qsm: (
-            qsm.local_comms_health.name if qsm.local_comms_health else None
+            qsm.local_comms_health.name
+            if qsm.local_comms_health is not None
+            else None
         ),
         entity_registry_enabled_default=False,
     ),
@@ -514,7 +516,9 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         name="Local Comms Health",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda ctrl: (
-            ctrl.local_comms_health.name if ctrl.local_comms_health else None
+            ctrl.local_comms_health.name
+            if ctrl.local_comms_health is not None
+            else None
         ),
         entity_registry_enabled_default=False,
     ),

@@ -5,9 +5,9 @@ from __future__ import annotations
 import math
 from types import SimpleNamespace
 
-from homeassistant.components.climate import HVACMode
+from homeassistant.components.climate import HVACAction, HVACMode
 import pytest
-from quilt_hp.models.enums import HVACMode as QHVACMode
+from quilt_hp.models.enums import HVACMode as QHVACMode, HVACState as QHVACState
 
 from custom_components.quilt_hp.climate import QuiltClimateEntity
 
@@ -32,6 +32,12 @@ def _entity(coordinator) -> QuiltClimateEntity:
 
 def test_hvac_mode_heat(coordinator) -> None:
     assert _entity(coordinator).hvac_mode == HVACMode.HEAT
+
+
+def test_hvac_mode_dry(hass) -> None:
+    space = make_space(hvac_mode=QHVACMode.DRY)
+    coordinator = make_mock_coordinator(hass, make_snapshot(spaces=[space]))
+    assert _entity(coordinator).hvac_mode == HVACMode.DRY
 
 
 def test_hvac_mode_off_when_standby(hass) -> None:
@@ -69,6 +75,17 @@ def test_target_temperature_range(hass) -> None:
 def test_target_temperature_hidden_in_fan_mode(hass) -> None:
     space = make_space(
         hvac_mode=QHVACMode.FAN, heat_setpoint_c=18.0, cool_setpoint_c=26.0
+    )
+    coordinator = make_mock_coordinator(hass, make_snapshot(spaces=[space]))
+    entity = _entity(coordinator)
+    assert entity.target_temperature is None
+    assert entity.target_temperature_low is None
+    assert entity.target_temperature_high is None
+
+
+def test_target_temperature_hidden_in_dry_mode(hass) -> None:
+    space = make_space(
+        hvac_mode=QHVACMode.DRY, heat_setpoint_c=18.0, cool_setpoint_c=26.0
     )
     coordinator = make_mock_coordinator(hass, make_snapshot(spaces=[space]))
     entity = _entity(coordinator)
@@ -118,6 +135,16 @@ def test_target_temperature_prefers_active_comfort_setting_when_controls_sentine
     entity = _entity(coordinator)
     assert entity.target_temperature_low == 19.5
     assert entity.target_temperature_high == 25.5
+
+
+@pytest.mark.parametrize(
+    "state",
+    [QHVACState.DRY, QHVACState.DRY_DEFERRED, QHVACState.DRY_PREPARING],
+)
+def test_hvac_action_drying_for_dry_states(hass, state) -> None:
+    space = make_space(hvac_mode=QHVACMode.DRY, hvac_state=state)
+    coordinator = make_mock_coordinator(hass, make_snapshot(spaces=[space]))
+    assert _entity(coordinator).hvac_action == HVACAction.DRYING
 
 
 async def test_set_hvac_mode(coordinator) -> None:
