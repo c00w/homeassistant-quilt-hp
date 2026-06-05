@@ -20,7 +20,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, Any, cast, override
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -69,7 +69,7 @@ def _local_comms_health_name(health: Any | None) -> str | None:
     """Return the health enum name, preserving falsy enum values."""
     if health is None:
         return None
-    return health.name
+    return cast(str, health.name)
 
 
 # ── Space temperature sensor (on QSM device) ──────────────────────────────────
