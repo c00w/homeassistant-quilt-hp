@@ -333,6 +333,15 @@ QSM_SENSOR_DESCRIPTIONS: tuple[QSMSensorDescription, ...] = (
         value_fn=lambda qsm: qsm.sensors.als_illuminance_raw if qsm.sensors else None,
         entity_registry_enabled_default=False,
     ),
+    QSMSensorDescription(
+        key="local_comms_health",
+        name="Local Comms Health",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda qsm: (
+            qsm.local_comms_health.name if qsm.local_comms_health else None
+        ),
+        entity_registry_enabled_default=False,
+    ),
 )
 
 
@@ -498,6 +507,15 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda ctrl: ctrl.wifi_freq_mhz,
         available_fn=lambda ctrl: ctrl.is_online and ctrl.wifi_freq_mhz is not None,
+        entity_registry_enabled_default=False,
+    ),
+    ControllerSensorDescription(
+        key="local_comms_health",
+        name="Local Comms Health",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda ctrl: (
+            ctrl.local_comms_health.name if ctrl.local_comms_health else None
+        ),
         entity_registry_enabled_default=False,
     ),
 )

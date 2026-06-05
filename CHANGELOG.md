@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-05
+
+### Added
+- Support for **Dry Mode** (dehumidification): New `HVACMode.DRY` with automatic humidity control
+  - Dry mode states: `HVACState.DRY`, `DRY_DEFERRED`, `DRY_PREPARING`
+  - Dry mode maps to `HVACAction.DRYING` in Home Assistant
+  - Temperature setpoint display disabled in Dry mode (server-side controlled)
+- **Local Comms Health sensors** for QSM (QuiltSmartModule) and Controller (Dial):
+  - Diagnostic sensors showing local Wi-Fi communication status
+  - Status values: `UNSPECIFIED`, `HEALTHY`, `DEGRADED`, `OFFLINE`, `STARTING_UP`
+  - Useful for troubleshooting local control connectivity
+
+### Changed
+- Upgraded `quilt-hp-python` dependency to `>=0.5.0`
+  - Brings in new DRY mode support and local comms health monitoring
+  - `LocalCommsStatus` proto message structure for QSM and Controller
+  - `LocalCommsHealthStatus` enum for health state
+
 ## [0.4.0] - 2026-05-16
 
 ## [0.3.0] - 2026-05-16
