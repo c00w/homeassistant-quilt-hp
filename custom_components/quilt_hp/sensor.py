@@ -20,7 +20,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, Any, cast, override
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -63,6 +63,14 @@ from .utils import normalize_temperature as _normalize_temperature
 
 if TYPE_CHECKING:
     from . import QuiltConfigEntry
+
+
+def _local_comms_health_name(health: Any | None) -> str | None:
+    """Return the health enum name, preserving falsy enum values."""
+    if health is None:
+        return None
+    return cast(str, health.name)
+
 
 # ── Space temperature sensor (on QSM device) ──────────────────────────────────
 
@@ -333,6 +341,13 @@ QSM_SENSOR_DESCRIPTIONS: tuple[QSMSensorDescription, ...] = (
         value_fn=lambda qsm: qsm.sensors.als_illuminance_raw if qsm.sensors else None,
         entity_registry_enabled_default=False,
     ),
+    QSMSensorDescription(
+        key="local_comms_health",
+        name="Local Comms Health",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda qsm: _local_comms_health_name(qsm.local_comms_health),
+        entity_registry_enabled_default=False,
+    ),
 )
 
 
@@ -498,6 +513,13 @@ CONTROLLER_SENSOR_DESCRIPTIONS: tuple[ControllerSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda ctrl: ctrl.wifi_freq_mhz,
         available_fn=lambda ctrl: ctrl.is_online and ctrl.wifi_freq_mhz is not None,
+        entity_registry_enabled_default=False,
+    ),
+    ControllerSensorDescription(
+        key="local_comms_health",
+        name="Local Comms Health",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda ctrl: _local_comms_health_name(ctrl.local_comms_health),
         entity_registry_enabled_default=False,
     ),
 )

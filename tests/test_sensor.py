@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import math
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,6 +13,7 @@ from custom_components.quilt_hp.sensor import (
     CONTROLLER_SENSOR_DESCRIPTIONS,
     IDU_SENSOR_DESCRIPTIONS,
     ODU_SENSOR_DESCRIPTIONS,
+    QSM_SENSOR_DESCRIPTIONS,
     REMOTE_SENSOR_DESCRIPTIONS,
     SPACE_SENSOR_DESCRIPTIONS,
     QuiltControllerRemoteSensor,
@@ -19,6 +21,7 @@ from custom_components.quilt_hp.sensor import (
     QuiltEnergySensor,
     QuiltIDUSensor,
     QuiltODUSensor,
+    QuiltQSMSensor,
     QuiltRemoteSensor,
     QuiltSpaceSensor,
     async_setup_entry,
@@ -34,6 +37,18 @@ from .conftest import (
     make_snapshot,
     make_space,
 )
+
+
+class FalsyHealthStatus:
+    """Falsy stand-in for a health status enum value."""
+
+    def __init__(self, name: str) -> None:
+        """Store the enum-like name."""
+        self.name = name
+
+    def __bool__(self) -> bool:
+        """Behave like an IntEnum zero value."""
+        return False
 
 
 @pytest.fixture
@@ -224,6 +239,31 @@ def test_controller_wifi_frequency(coordinator_with_ctrl) -> None:
     desc = next(d for d in CONTROLLER_SENSOR_DESCRIPTIONS if d.key == "wifi_frequency")
     entity = QuiltControllerSensor(coordinator_with_ctrl, "ctrl-001", desc)
     assert entity.native_value == 5745
+
+
+def test_qsm_local_comms_health_unspecified(hass) -> None:
+    idu = make_idu()
+    idu.qsm_id = "qsm-001"
+    snapshot = make_snapshot(indoor_units=[idu])
+    coordinator = make_mock_coordinator(hass, snapshot)
+    coordinator.qsm_by_id = {
+        "qsm-001": SimpleNamespace(
+            local_comms_health=FalsyHealthStatus("UNSPECIFIED"), sensors=None
+        )
+    }
+    desc = next(d for d in QSM_SENSOR_DESCRIPTIONS if d.key == "local_comms_health")
+    entity = QuiltQSMSensor(coordinator, "idu-001", desc)
+    assert entity.native_value == "UNSPECIFIED"
+
+
+def test_controller_local_comms_health_unspecified(coordinator_with_ctrl) -> None:
+    ctrl = coordinator_with_ctrl.ctrl_by_id["ctrl-001"]
+    ctrl.local_comms_health = FalsyHealthStatus("UNSPECIFIED")
+    desc = next(
+        d for d in CONTROLLER_SENSOR_DESCRIPTIONS if d.key == "local_comms_health"
+    )
+    entity = QuiltControllerSensor(coordinator_with_ctrl, "ctrl-001", desc)
+    assert entity.native_value == "UNSPECIFIED"
 
 
 def test_remote_sensor_temperature(hass) -> None:
