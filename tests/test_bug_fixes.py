@@ -98,19 +98,19 @@ class TestEnergyDateBug:
         # Force stale so energy fetch actually runs
         coordinator._energy_last_fetch = datetime.now(UTC) - timedelta(hours=1)
 
-        metric = SimpleNamespace(space_id="space-001", total_kwh=2.0)
+        metric = SimpleNamespace(space_id="space-001", buckets=[])
         client.get_energy = AsyncMock(return_value=[metric])
 
         await coordinator._async_update_energy()
 
-        # Verify the start arg is a UTC-aware datetime with midnight time
+        # The window spans the previous day plus today, so the start is
+        # yesterday's UTC midnight — anchored on the UTC date, not local.
         call_args = client.get_energy.call_args
         start_arg = call_args[0][0]
         assert start_arg.tzinfo == UTC
         assert start_arg.hour == 0
         assert start_arg.minute == 0
-        # The date should be from UTC, not local
-        assert start_arg.date() == datetime.now(UTC).date()
+        assert start_arg.date() == datetime.now(UTC).date() - timedelta(days=1)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

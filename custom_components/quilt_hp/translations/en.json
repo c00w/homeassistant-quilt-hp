@@ -81,8 +81,8 @@
   },
   "entity": {
     "sensor": {
-      "energy_today": {
-        "name": "Energy today"
+      "energy_hourly": {
+        "name": "Energy hourly"
       }
     },
     "switch": {

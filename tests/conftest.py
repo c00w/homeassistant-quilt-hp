@@ -283,8 +283,7 @@ def make_mock_coordinator(hass: HomeAssistant, snapshot=None) -> MagicMock:
         r.id: r for r in data.controller_remote_sensors
     }
     coordinator.location_by_id = {loc.id: loc for loc in data.locations}
-    coordinator.energy_by_space_id = {}
-    coordinator.energy_last_reset = None
+    coordinator.energy_hourly_by_space_id = {}
     coordinator.last_update_success = True
     coordinator.client = MagicMock()
     coordinator.async_set_space = AsyncMock()

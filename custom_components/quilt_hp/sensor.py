@@ -19,10 +19,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast, override
 
 from homeassistant.components.sensor import (
+    DOMAIN as SENSOR_DOMAIN,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
@@ -39,6 +39,7 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -49,7 +50,9 @@ from quilt_hp.models.outdoor_unit import OutdoorUnit
 from quilt_hp.models.qsm import QuiltSmartModule
 from quilt_hp.models.sensor import ControllerRemoteSensor, RemoteSensor
 from quilt_hp.models.space import Space
+from quilt_hp.models.system import SystemSnapshot
 
+from .const import DOMAIN
 from .coordinator import QuiltCoordinator
 from .entity import (
     QuiltEntity,
@@ -626,8 +629,30 @@ CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS: tuple[ControllerRemoteSensorDescription, 
 # ── Platform setup ────────────────────────────────────────────────────────────
 
 
+def _migrate_energy_unique_ids(hass: HomeAssistant, snapshot: SystemSnapshot) -> None:
+    """Rename legacy ``energy_today`` unique ids to ``energy_hourly``.
+
+    Updating the existing registry entry in place (rather than letting the new
+    unique id create a fresh entity) preserves the entity_id — and therefore
+    the recorder statistic id and all imported hourly history — across the
+    rename. No-op once migrated or on fresh installs.
+    """
+    ent_reg = er.async_get(hass)
+    for space in snapshot.spaces:
+        if not space.is_room:
+            continue
+        old_uid = f"quilt_space_{space.id}_energy_today"
+        new_uid = f"quilt_space_{space.id}_energy_hourly"
+        entity_id = ent_reg.async_get_entity_id(SENSOR_DOMAIN, DOMAIN, old_uid)
+        if entity_id is None:
+            continue  # Nothing to migrate (fresh install or already migrated).
+        if ent_reg.async_get_entity_id(SENSOR_DOMAIN, DOMAIN, new_uid) is not None:
+            continue  # New id already exists — avoid a unique_id collision.
+        ent_reg.async_update_entity(entity_id, new_unique_id=new_uid)
+
+
 async def async_setup_entry(
-    _hass: HomeAssistant,
+    hass: HomeAssistant,
     entry: QuiltConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
@@ -635,6 +660,8 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     snapshot = coordinator.data
     entities: list[SensorEntity] = []
+
+    _migrate_energy_unique_ids(hass, snapshot)
 
     # Index the first IDU per space so space-level sensors have a device to live on.
     first_idu_for_space: dict[str, str] = {}
@@ -659,7 +686,7 @@ async def async_setup_entry(
         idu_id = first_idu_for_space.get(space.id)
         if idu_id is None:
             continue
-        entities.append(QuiltEnergySensor(coordinator, space.id, idu_id))
+        entities.append(QuiltEnergyHourlySensor(coordinator, space.id, idu_id))
 
     # QSM/IDU sensors
     for idu in snapshot.indoor_units:
@@ -980,13 +1007,20 @@ class QuiltControllerRemoteSensor(QuiltEntity, SensorEntity):
         return self.entity_description.value_fn(self._crs)
 
 
-class QuiltEnergySensor(QuiltEntity, SensorEntity):
-    """Today's energy consumption for a Quilt space (room)."""
+class QuiltEnergyHourlySensor(QuiltEntity, SensorEntity):
+    """Most recent hour's energy consumption for a Quilt space (room).
+
+    The live state is the latest valid hourly bucket's kWh — not a daily total.
+    Deliberately has no ``state_class``: long-term/Energy-dashboard statistics
+    for this entity are owned by the coordinator, which imports authoritative
+    hourly rows via ``async_import_statistics``. Setting a ``total`` state class
+    would make the recorder auto-compile a second, conflicting series for the
+    same statistic id.
+    """
 
     _attr_device_class: SensorDeviceClass = SensorDeviceClass.ENERGY
-    _attr_state_class: SensorStateClass = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement: str = UnitOfEnergy.KILO_WATT_HOUR
-    _attr_translation_key: str = "energy_today"
+    _attr_translation_key: str = "energy_hourly"
     _attr_suggested_display_precision: int = 3
 
     def __init__(
@@ -999,7 +1033,7 @@ class QuiltEnergySensor(QuiltEntity, SensorEntity):
         super().__init__(coordinator)
         self._space_id: str = space_id
         self._idu_id: str = idu_id
-        self._attr_unique_id: str = f"quilt_space_{space_id}_energy_today"
+        self._attr_unique_id: str = f"quilt_space_{space_id}_energy_hourly"
 
     @property
     @override
@@ -1011,10 +1045,5 @@ class QuiltEnergySensor(QuiltEntity, SensorEntity):
     @property
     @override
     def native_value(self) -> float | None:
-        total = self.coordinator.energy_by_space_id.get(self._space_id)
-        return round(total, 4) if total is not None else None
-
-    @property
-    @override
-    def last_reset(self) -> datetime | None:
-        return self.coordinator.energy_last_reset
+        value = self.coordinator.energy_hourly_by_space_id.get(self._space_id)
+        return round(value, 4) if value is not None else None

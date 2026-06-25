@@ -16,12 +16,14 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
 from quilt_hp.exceptions import QuiltError
+from quilt_hp.models.energy import EnergyBucket, SpaceEnergyMetrics
 from quilt_hp.models.enums import (
     ComfortSettingType,
     FanSpeed,
     HVACMode as QHVACMode,
     LedAnimation,
     LouverMode,
+    MetricBucketStatus,
 )
 from quilt_hp.models.qsm import QsmSensors, QuiltSmartModule
 from quilt_hp.models.system import ComfortSetting
@@ -50,7 +52,7 @@ from custom_components.quilt_hp.sensor import (
     SPACE_SENSOR_DESCRIPTIONS,
     QuiltControllerRemoteSensor,
     QuiltControllerSensor,
-    QuiltEnergySensor,
+    QuiltEnergyHourlySensor,
     QuiltIDUSensor,
     QuiltODUSensor,
     QuiltQSMSensor,
@@ -121,6 +123,26 @@ def _entry_mock() -> MagicMock:
     entry = MagicMock()
     entry.options = {}
     return entry
+
+
+def _energy_metric(
+    space_id: str, points: list[tuple[datetime, float]]
+) -> SpaceEnergyMetrics:
+    """Build a SpaceEnergyMetrics from (hour_start, kwh) points.
+
+    A NaN kwh produces a missing/incomplete bucket.
+    """
+    return SpaceEnergyMetrics(
+        space_id=space_id,
+        buckets=[
+            EnergyBucket(
+                start_time=ts,
+                energy_kwh=kwh,
+                status=MetricBucketStatus.COMPLETE,
+            )
+            for ts, kwh in points
+        ],
+    )
 
 
 @pytest.fixture
@@ -375,14 +397,136 @@ class TestCoordinatorEnergy:
         coordinator = QuiltCoordinator(hass, _entry_mock(), "u@e.com")
         await coordinator.async_setup()
 
+        now = datetime.now(UTC)
+        today_start = datetime.combine(now.date(), datetime.min.time(), tzinfo=UTC)
         # Force stale timestamp
-        coordinator._energy_last_fetch = datetime.now(UTC) - timedelta(hours=1)
-        metric = SimpleNamespace(space_id="space-001", total_kwh=1.5)
+        coordinator._energy_last_fetch = now - timedelta(hours=1)
+        # Live value is the most recent bucket (today_start), not the earlier one.
+        metric = _energy_metric(
+            "space-001",
+            [(today_start - timedelta(hours=1), 9.0), (today_start, 1.5)],
+        )
         client.get_energy = AsyncMock(return_value=[metric])
 
         await coordinator._async_update_energy()
-        assert coordinator.energy_by_space_id["space-001"] == 1.5
-        assert coordinator.energy_last_reset is not None
+        assert coordinator.energy_hourly_by_space_id["space-001"] == 1.5
+
+    async def test_energy_fetch_reimports_two_days_of_hourly_statistics(
+        self, hass: HomeAssistant, mock_client
+    ) -> None:
+        """Every fetch re-imports hourly rows for the previous and current day.
+
+        The window starts at yesterday's UTC midnight, and each valid hourly
+        bucket becomes one statistics row with a cumulative sum anchored on the
+        prior series. NaN buckets are skipped (leaving a gap).
+        """
+        client, _stream = mock_client
+        coordinator = QuiltCoordinator(hass, _entry_mock(), "u@e.com")
+        await coordinator.async_setup()
+
+        now = datetime.now(UTC)
+        today_start = datetime.combine(now.date(), datetime.min.time(), tzinfo=UTC)
+        yesterday_start = today_start - timedelta(days=1)
+        coordinator._energy_last_fetch = now - timedelta(hours=1)
+
+        metric = _energy_metric(
+            "space-001",
+            [
+                (yesterday_start, 1.0),  # previous day
+                (today_start, 0.5),  # current day
+                (today_start + timedelta(hours=1), 0.5),
+                (today_start + timedelta(hours=2), float("nan")),  # missing
+            ],
+        )
+        client.get_energy = AsyncMock(return_value=[metric])
+
+        # Existing cumulative sum of 100 kWh before the window.
+        baseline = {"sensor.room_energy_today": [{"sum": 100.0}]}
+        with (
+            patch(
+                "custom_components.quilt_hp.coordinator.er.async_get"
+            ) as mock_er_get,
+            patch(
+                "custom_components.quilt_hp.coordinator.get_instance"
+            ) as mock_get_instance,
+            patch(
+                "custom_components.quilt_hp.coordinator.async_import_statistics"
+            ) as mock_import,
+        ):
+            mock_er_get.return_value.async_get_entity_id.return_value = (
+                "sensor.room_energy_today"
+            )
+            mock_get_instance.return_value.async_add_executor_job = AsyncMock(
+                return_value=baseline
+            )
+
+            await coordinator._async_update_energy()
+
+        # The window starts at yesterday's UTC midnight (two days of data).
+        assert client.get_energy.await_args.args[0] == yesterday_start
+
+        # One import call carrying a row per valid bucket, cumulative sum
+        # continuing from the 100 kWh baseline; the NaN hour is dropped.
+        mock_import.assert_called_once()
+        _hass_arg, metadata, rows = mock_import.call_args.args
+        assert metadata["statistic_id"] == "sensor.room_energy_today"
+        assert metadata["source"] == "recorder"
+        assert [r["start"] for r in rows] == [
+            yesterday_start,
+            today_start,
+            today_start + timedelta(hours=1),
+        ]
+        assert [r["state"] for r in rows] == [1.0, 0.5, 0.5]
+        assert [r["sum"] for r in rows] == [101.0, 101.5, 102.0]
+
+        # Live value is the most recent valid bucket (the NaN hour is skipped),
+        # i.e. the today_start + 1h bucket.
+        assert coordinator.energy_hourly_by_space_id["space-001"] == 0.5
+
+    async def test_energy_reimport_no_baseline_and_empty_buckets(
+        self, hass: HomeAssistant, mock_client
+    ) -> None:
+        """No prior statistics anchors the sum at 0; empty buckets are skipped."""
+        client, _stream = mock_client
+        coordinator = QuiltCoordinator(hass, _entry_mock(), "u@e.com")
+        await coordinator.async_setup()
+
+        now = datetime.now(UTC)
+        today_start = datetime.combine(now.date(), datetime.min.time(), tzinfo=UTC)
+        coordinator._energy_last_fetch = now - timedelta(hours=1)
+
+        client.get_energy = AsyncMock(
+            return_value=[
+                _energy_metric("space-empty", []),  # no buckets → skipped
+                _energy_metric("space-fresh", [(today_start, 2.0)]),
+            ]
+        )
+
+        with (
+            patch(
+                "custom_components.quilt_hp.coordinator.er.async_get"
+            ) as mock_er_get,
+            patch(
+                "custom_components.quilt_hp.coordinator.get_instance"
+            ) as mock_get_instance,
+            patch(
+                "custom_components.quilt_hp.coordinator.async_import_statistics"
+            ) as mock_import,
+        ):
+            mock_er_get.return_value.async_get_entity_id.return_value = (
+                "sensor.room_energy_today"
+            )
+            # No prior statistics exist for the id.
+            mock_get_instance.return_value.async_add_executor_job = AsyncMock(
+                return_value={}
+            )
+
+            await coordinator._async_update_energy()
+
+        # Only the space with buckets is imported; sum starts from 0.0.
+        mock_import.assert_called_once()
+        _hass_arg, _metadata, rows = mock_import.call_args.args
+        assert [r["sum"] for r in rows] == [2.0]
 
 
 class TestCoordinatorAuthRetry:
@@ -809,7 +953,7 @@ class TestControllerRemoteSensor:
 class TestEnergySensor:
     def test_device_info(self, hass: HomeAssistant) -> None:
         coordinator = make_mock_coordinator(hass)
-        entity = QuiltEnergySensor(coordinator, "space-001", "idu-001")
+        entity = QuiltEnergyHourlySensor(coordinator, "space-001", "idu-001")
         info = entity.device_info
         assert info is not None
 

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import math
 from types import SimpleNamespace
 
+from homeassistant.helpers import entity_registry as er
 import pytest
 
+from custom_components.quilt_hp.const import DOMAIN
 from custom_components.quilt_hp.sensor import (
     CONTROLLER_REMOTE_SENSOR_DESCRIPTIONS,
     CONTROLLER_SENSOR_DESCRIPTIONS,
@@ -18,12 +19,13 @@ from custom_components.quilt_hp.sensor import (
     SPACE_SENSOR_DESCRIPTIONS,
     QuiltControllerRemoteSensor,
     QuiltControllerSensor,
-    QuiltEnergySensor,
+    QuiltEnergyHourlySensor,
     QuiltIDUSensor,
     QuiltODUSensor,
     QuiltQSMSensor,
     QuiltRemoteSensor,
     QuiltSpaceSensor,
+    _migrate_energy_unique_ids,
     async_setup_entry,
 )
 
@@ -314,25 +316,111 @@ def test_ctrl_remote_sensor_battery(hass) -> None:
 
 
 def test_energy_sensor_returns_none_before_first_fetch(coordinator) -> None:
-    entity = QuiltEnergySensor(coordinator, "space-001", "idu-001")
+    entity = QuiltEnergyHourlySensor(coordinator, "space-001", "idu-001")
     assert entity.native_value is None
-    assert entity.last_reset is None
 
 
-def test_energy_sensor_returns_value_after_fetch(hass) -> None:
+def test_energy_sensor_has_no_state_class(coordinator) -> None:
+    # Long-term statistics are owned by the coordinator's imports, so the
+    # entity must not advertise a state class (which would make the recorder
+    # auto-compile a conflicting series for the same statistic id).
+    entity = QuiltEnergyHourlySensor(coordinator, "space-001", "idu-001")
+    assert entity.state_class is None
+
+
+def test_energy_sensor_unique_id_is_hourly(coordinator) -> None:
+    entity = QuiltEnergyHourlySensor(coordinator, "space-001", "idu-001")
+    assert entity.unique_id == "quilt_space_space-001_energy_hourly"
+
+
+def test_energy_sensor_returns_latest_hour_value(hass) -> None:
     coordinator = make_mock_coordinator(hass)
-    coordinator.energy_by_space_id = {"space-001": 3.14159}
-    coordinator.energy_last_reset = datetime(2026, 5, 12, 0, 0, 0, tzinfo=UTC)
-    entity = QuiltEnergySensor(coordinator, "space-001", "idu-001")
+    coordinator.energy_hourly_by_space_id = {"space-001": 3.14159}
+    entity = QuiltEnergyHourlySensor(coordinator, "space-001", "idu-001")
     assert entity.native_value == 3.1416
-    assert entity.last_reset == datetime(2026, 5, 12, 0, 0, 0, tzinfo=UTC)
 
 
 def test_energy_sensor_missing_space_returns_none(hass) -> None:
     coordinator = make_mock_coordinator(hass)
-    coordinator.energy_by_space_id = {"other-space": 1.0}
-    entity = QuiltEnergySensor(coordinator, "space-001", "idu-001")
+    coordinator.energy_hourly_by_space_id = {"other-space": 1.0}
+    entity = QuiltEnergyHourlySensor(coordinator, "space-001", "idu-001")
     assert entity.native_value is None
+
+
+def test_migrate_energy_unique_ids_renames_in_place(hass) -> None:
+    """Legacy energy_today id is renamed to energy_hourly, keeping entity_id."""
+    ent_reg = er.async_get(hass)
+    created = ent_reg.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "quilt_space_space-001_energy_today",
+        suggested_object_id="living_room_energy_today",
+    )
+
+    snapshot = make_snapshot(spaces=[make_space()])
+    _migrate_energy_unique_ids(hass, snapshot)
+
+    # entity_id (hence statistic id and history) is preserved across the rename.
+    assert (
+        ent_reg.async_get_entity_id(
+            "sensor", DOMAIN, "quilt_space_space-001_energy_hourly"
+        )
+        == created.entity_id
+    )
+    assert (
+        ent_reg.async_get_entity_id(
+            "sensor", DOMAIN, "quilt_space_space-001_energy_today"
+        )
+        is None
+    )
+
+
+def test_migrate_energy_unique_ids_noop_without_legacy_entity(hass) -> None:
+    """Fresh install: nothing to migrate, and no new entity is fabricated."""
+    snapshot = make_snapshot(spaces=[make_space()])
+    _migrate_energy_unique_ids(hass, snapshot)
+
+    ent_reg = er.async_get(hass)
+    assert (
+        ent_reg.async_get_entity_id(
+            "sensor", DOMAIN, "quilt_space_space-001_energy_hourly"
+        )
+        is None
+    )
+
+
+def test_migrate_energy_unique_ids_skips_non_rooms_and_collisions(hass) -> None:
+    """Non-room spaces are skipped, and an existing new id is never clobbered."""
+    ent_reg = er.async_get(hass)
+    legacy = ent_reg.async_get_or_create(
+        "sensor", DOMAIN, "quilt_space_space-001_energy_today"
+    )
+    # The target id already exists → migration must not collide with it.
+    ent_reg.async_get_or_create(
+        "sensor", DOMAIN, "quilt_space_space-001_energy_hourly"
+    )
+
+    snapshot = make_snapshot(
+        spaces=[
+            make_space(space_id="space-001"),  # room, but new id already taken
+            make_space(space_id="space-002", parent_space_id=""),  # not a room
+        ]
+    )
+    _migrate_energy_unique_ids(hass, snapshot)
+
+    # Legacy id is left untouched (collision), non-room space gets no entity.
+    assert (
+        ent_reg.async_get_entity_id(
+            "sensor", DOMAIN, "quilt_space_space-001_energy_today"
+        )
+        == legacy.entity_id
+    )
+    assert (
+        ent_reg.async_get_entity_id(
+            "sensor", DOMAIN, "quilt_space_space-002_energy_hourly"
+        )
+        is None
+    )
 
 
 def test_idu_unavailable_when_offline(hass) -> None:

@@ -1,6 +1,7 @@
 {
   "domain": "quilt_hp",
   "name": "Quilt",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@eman"],
   "config_flow": true,
   "documentation": "https://github.com/eman/homeassistant-quilt-hp",

@@ -2,15 +2,28 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 import contextlib
 from datetime import UTC, datetime, time as dt_time, timedelta
 import logging
 from typing import Any, override
 
+from homeassistant.components.recorder import get_instance
+from homeassistant.components.recorder.models import (
+    StatisticData,
+    StatisticMeanType,
+    StatisticMetaData,
+)
+from homeassistant.components.recorder.statistics import (
+    async_import_statistics,
+    statistics_during_period,
+)
+from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.issue_registry import (
     IssueSeverity,
     async_create_issue,
@@ -32,6 +45,7 @@ from .const import (
     CONF_POLLING_INTERVAL,
     COORDINATOR_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
+    ENERGY_STATISTICS_LOOKBACK_DAYS,
     ENERGY_UPDATE_INTERVAL_MINUTES,
 )
 from .token_store import HATokenStore
@@ -41,6 +55,33 @@ _LOGGER = logging.getLogger(__name__)
 # Number of consecutive stream errors before raising a HA repair issue.
 _STREAM_ERROR_THRESHOLD: int = 5
 _ISSUE_STREAM_DEGRADED: str = "stream_degraded"
+
+
+def _latest_valid_bucket_value(buckets: Iterable[Any]) -> float | None:
+    """Energy of the most recent valid (non-NaN) hourly bucket, or None."""
+    latest_start: datetime | None = None
+    latest_value: float | None = None
+    for bucket in buckets:
+        value = bucket.energy_kwh_or_none
+        if value is None:
+            continue
+        if latest_start is None or bucket.start_time > latest_start:
+            latest_start = bucket.start_time
+            latest_value = value
+    return latest_value
+
+
+def _energy_statistic_metadata(statistic_id: str) -> StatisticMetaData:
+    """Build recorder statistics metadata for a space energy sensor."""
+    return StatisticMetaData(
+        mean_type=StatisticMeanType.NONE,
+        has_sum=True,
+        name=None,
+        source="recorder",
+        statistic_id=statistic_id,
+        unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        unit_class=None,
+    )
 
 
 class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
@@ -86,9 +127,9 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         self.remote_sensor_by_id: dict[str, RemoteSensor] = {}
         self.ctrl_remote_sensor_by_id: dict[str, ControllerRemoteSensor] = {}
         self.location_by_id: dict[str, Location] = {}
-        # Energy data — updated at most every ENERGY_UPDATE_INTERVAL_MINUTES
-        self.energy_by_space_id: dict[str, float] = {}
-        self.energy_last_reset: datetime | None = None
+        # Energy data — updated at most every ENERGY_UPDATE_INTERVAL_MINUTES.
+        # Maps space id → most recent valid hourly bucket value (kWh).
+        self.energy_hourly_by_space_id: dict[str, float] = {}
         self._energy_last_fetch: datetime | None = None
 
     @override
@@ -318,24 +359,110 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         return snapshot  # type: ignore[no-any-return]
 
     async def _async_update_energy(self) -> None:
-        """Fetch today's energy metrics from the API, rate-limited."""
+        """Fetch energy metrics from the API, rate-limited, and refresh stats.
+
+        Each fetch re-queries from the start of yesterday through now and
+        re-imports the full set of hourly statistics rows for every space
+        sensor. Because ``async_import_statistics`` overwrites rows keyed by
+        ``(statistic_id, start)``, every fetch heals any hour that was
+        incomplete when last seen — in particular the final hour of the
+        previous day, which a "today"-only query never revisits after a UTC
+        midnight rollover. This replaces the earlier rollover-only correction.
+        """
         now = datetime.now(UTC)
+        today_start = datetime.combine(now.date(), dt_time.min, tzinfo=UTC)
         if (
             self._energy_last_fetch is not None
             and now - self._energy_last_fetch
             < timedelta(minutes=ENERGY_UPDATE_INTERVAL_MINUTES)
         ):
             return
+
+        # Look back so the previous day's final (often incomplete) hour is
+        # recomputed after midnight without a dedicated rollover path.
+        window_start = today_start - timedelta(days=ENERGY_STATISTICS_LOOKBACK_DAYS)
         try:
-            start = datetime.combine(now.date(), dt_time.min, tzinfo=UTC)
             metrics = await self._client.get_energy(
-                start, now, system_id=self._system_id
+                window_start, now, system_id=self._system_id
             )
-            self.energy_by_space_id = {m.space_id: m.total_kwh for m in metrics}
-            self.energy_last_reset = start
-            self._energy_last_fetch = now
         except Exception as err:
             _LOGGER.warning("Failed to fetch Quilt energy data: %s", err)
+            return
+
+        # Live sensor value: the most recent valid hourly bucket per space.
+        self.energy_hourly_by_space_id = {
+            m.space_id: value
+            for m in metrics
+            if (value := _latest_valid_bucket_value(m.buckets)) is not None
+        }
+        self._energy_last_fetch = now
+
+        await self._async_import_energy_statistics(metrics)
+
+    async def _async_import_energy_statistics(self, metrics: Iterable[Any]) -> None:
+        """Re-import hourly long-term statistics for each space sensor.
+
+        For each space, walks its hourly buckets in order and writes one
+        statistics row per valid bucket, continuing the cumulative ``sum`` from
+        the value recorded just before the window. Re-importing every fetch
+        lets later, more-complete data overwrite earlier partial hours.
+        """
+        ent_reg = er.async_get(self.hass)
+        for metric in metrics:
+            # Mirrors QuiltEnergyHourlySensor's unique_id in sensor.py.
+            unique_id = f"quilt_space_{metric.space_id}_energy_hourly"
+            statistic_id = ent_reg.async_get_entity_id(
+                SENSOR_DOMAIN, DOMAIN, unique_id
+            )
+            if statistic_id is None:
+                continue  # Sensor not registered yet — nothing to attach to.
+
+            buckets = sorted(metric.buckets, key=lambda b: b.start_time)
+            if not buckets:
+                continue
+
+            running_sum = await self._async_baseline_sum(
+                get_instance(self.hass), statistic_id, buckets[0].start_time
+            )
+            rows: list[StatisticData] = []
+            for bucket in buckets:
+                value = bucket.energy_kwh_or_none
+                if value is None:
+                    continue  # NaN/missing hour — leave a gap, keep the sum.
+                running_sum += value
+                rows.append(
+                    StatisticData(
+                        start=bucket.start_time, state=value, sum=running_sum
+                    )
+                )
+            if rows:
+                async_import_statistics(
+                    self.hass, _energy_statistic_metadata(statistic_id), rows
+                )
+
+    async def _async_baseline_sum(
+        self, recorder: Any, statistic_id: str, window_start: datetime
+    ) -> float:
+        """Cumulative ``sum`` recorded immediately before ``window_start``.
+
+        Anchors the re-imported rows onto the existing series so the running
+        dashboard total stays continuous across fetches. Returns 0.0 when no
+        prior statistics exist.
+        """
+        stats = await recorder.async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            window_start - timedelta(days=2),
+            window_start,
+            {statistic_id},
+            "hour",
+            None,
+            {"sum"},
+        )
+        rows = stats.get(statistic_id)
+        if rows and rows[-1].get("sum") is not None:
+            return float(rows[-1]["sum"])
+        return 0.0
 
     async def _with_auth_retry[T](self, operation: Callable[[], Awaitable[T]]) -> T:
         """Retry one write after re-login when access token has expired.
