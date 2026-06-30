@@ -397,7 +397,8 @@ class TestCoordinatorEnergy:
         metric = SimpleNamespace(space_id="space-001", total_kwh=2.5)
         client.get_energy = AsyncMock(return_value=[metric])
 
-        await coordinator._on_stream_energy_refresh(make_space())
+        coordinator._on_stream_energy_refresh(make_space())
+        await hass.async_block_till_done()
 
         client.get_energy.assert_awaited_once()
         assert coordinator.energy_by_space_id["space-001"] == 2.5

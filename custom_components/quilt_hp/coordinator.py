@@ -302,7 +302,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
             self._on_stream_reconnect()
             self.async_set_updated_data(self.data)
 
-    async def _on_stream_energy_refresh(self, _entity: object) -> None:
+    def _on_stream_energy_refresh(self, _entity: object) -> None:
         """Refresh energy on any stream push, regardless of entity type.
 
         Registered against every entity event so that pushes — which bypass
@@ -311,7 +311,7 @@ class QuiltCoordinator(DataUpdateCoordinator[SystemSnapshot]):
         rate-limited in ``_async_update_energy``, so running it on every push
         is cheap.
         """
-        await self._async_update_energy()
+        self.hass.async_create_task(self._async_update_energy())
 
     # ------------------------------------------------------------------
     # Polling fallback
